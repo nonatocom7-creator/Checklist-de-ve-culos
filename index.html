@@ -141,7 +141,6 @@
                         </div>
                         <div>
                             <label class="block font-bold mb-2">Placa do Veículo:</label>
-                            <!-- Input para digitar a placa (ou ser preenchida pelo QR Code) -->
                             <input type="text" id="placa" name="placa" required placeholder="Ex: ABC-1234" class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold">
                             <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou use o QR Code.</p>
                         </div>
@@ -462,7 +461,6 @@
             if(confirm("Tem certeza que deseja excluir este veículo?")) {
                 try {
                     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', id));
-                    // A interface atualizará sozinha pelo onSnapshot
                 } catch(e) {
                     window.showMessage("Erro", "Falha ao excluir na nuvem.");
                 }
@@ -515,6 +513,7 @@
         
         function renderChecklistForm() {
             const container = document.getElementById('checklistContainer');
+            if (!container) return;
             container.innerHTML = '';
             
             categoriasChecklist.forEach((cat, catIndex) => {
@@ -555,7 +554,6 @@
 
             const novaPlaca = document.getElementById('v-placa').value.toUpperCase();
             
-            // Verifica duplicidade pela placa
             if(globalVehicles.some(v => v.placa === novaPlaca)) {
                 window.showMessage("Erro", "Veículo com esta placa já cadastrado!");
                 btn.disabled = false; btn.innerText = "Salvar Veículo na Nuvem";
@@ -626,10 +624,8 @@
             novoChecklist.temAvaria = avariasCount > 0;
 
             try {
-                // 1. Salva o Checklist na Coleção Checklists
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'checklists'), novoChecklist);
 
-                // 2. Procura o veículo no banco para atualizar o KM se for maior
                 const veiculo = globalVehicles.find(v => v.placa === placaInformada);
                 if(veiculo && kmInformado > (veiculo.kmAtual || 0)) {
                     const vehicleRef = doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', veiculo.id);
@@ -716,7 +712,7 @@
                                 <svg class="w-5 h-5 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2c-5.333 7.333-8 11.556-8 15a8 8 0 1016 0c0-3.444-2.667-7.667-8-15zm-2 15a2 2 0 114 0 2 2 0 01-4 0z"></path></svg>
                             </button>
                             <button onclick="generateQR('${v.placa}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Gerar QR Code">
-                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1 z"></path></svg>
                             </button>
                             <button onclick="deleteVehicle('${v.id}')" class="text-red-600 hover:text-red-800" title="Excluir">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -821,20 +817,24 @@
 
             if (placaDaURL) {
                 const inputPlaca = document.getElementById('placa');
-                inputPlaca.value = placaDaURL.toUpperCase(); 
-                inputPlaca.readOnly = true; 
-                inputPlaca.classList.add('bg-gray-200', 'cursor-not-allowed', 'text-gray-600');
-                
-                const hint = document.getElementById('placa-hint');
-                hint.innerText = "✅ Placa identificada pela Nuvem / QR Code.";
-                hint.classList.add("text-green-600", "font-bold");
+                if(inputPlaca) {
+                    inputPlaca.value = placaDaURL.toUpperCase(); 
+                    inputPlaca.readOnly = true; 
+                    inputPlaca.classList.add('bg-gray-200', 'cursor-not-allowed', 'text-gray-600');
+                    
+                    const hint = document.getElementById('placa-hint');
+                    if(hint) {
+                        hint.innerText = "✅ Placa identificada pela Nuvem / QR Code.";
+                        hint.classList.add("text-green-600", "font-bold");
+                    }
+                }
             }
         }
 
-        // Boot
+        // Boot executado imediatamente ao carregar
         window.addEventListener('DOMContentLoaded', () => {
-            renderChecklistForm();
-            verificarQRCodeURL();
+            renderChecklistForm(); // Renderiza os itens do checklist na tela
+            verificarQRCodeURL();    // Lê a placa se veio pelo QR Code
             initializeDatabaseConnection(); // Conecta com o Firebase
         });
     </script>
