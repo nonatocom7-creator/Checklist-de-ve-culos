@@ -35,7 +35,7 @@
             border: 1px solid #ccc;
             border-radius: 5px;
             box-sizing: border-box;
-            font-size: 16px; /* Evita zoom automático no celular */
+            font-size: 16px;
         }
         .checklist-item {
             border-bottom: 1px solid #eee;
@@ -57,7 +57,6 @@
             cursor: pointer;
             font-weight: bold;
         }
-        /* Esconde o radio button original e estiliza o label */
         input[type="radio"] { display: none; }
         input[type="radio"][value="Conforme"]:checked + .btn-radio {
             background-color: var(--success);
@@ -88,7 +87,6 @@
     <h2>Checklist - Veículos</h2>
 
     <form id="checklistForm">
-        <!-- IDENTIFICAÇÃO -->
         <div class="card">
             <label for="motorista">Nome do Motorista:</label>
             <input type="text" id="motorista" name="motorista" required placeholder="Ex: João Silva">
@@ -100,16 +98,13 @@
             <input type="number" id="km" name="km" required placeholder="Ex: 45000">
         </div>
 
-        <!-- O Javascript vai gerar as perguntas aqui dentro -->
         <div id="checklistContainer"></div>
 
-        <!-- OBSERVAÇÕES E FOTO -->
         <div class="card">
             <label for="observacoes">Observações Gerais:</label>
             <input type="text" id="observacoes" name="observacoes" placeholder="Descreva problemas, se houver">
 
             <label>Evidência Fotográfica (Avarias):</label>
-            <!-- O capture="environment" abre a câmera traseira no celular -->
             <input type="file" id="foto" name="foto" accept="image/*" capture="environment">
         </div>
 
@@ -117,7 +112,6 @@
     </form>
 
     <script>
-        // Lista de perguntas estruturada para facilitar manutenção
         const categorias = [
             {
                 titulo: "Caçamba e Amarração",
@@ -139,7 +133,6 @@
 
         const container = document.getElementById('checklistContainer');
 
-        // Gera o HTML das perguntas dinamicamente
         categorias.forEach((cat, catIndex) => {
             let htmlDiv = `<div class="card"><label style="font-size: 18px; color: #0056b3;">${cat.titulo}</label>`;
             
@@ -164,37 +157,28 @@
             container.innerHTML += htmlDiv;
         });
 
-        // Ação ao clicar em "Salvar"
         document.getElementById('checklistForm').addEventListener('submit', function(e) {
-            e.preventDefault(); // Evita recarregar a página
-            
-            // Coleta os dados do formulário
+            e.preventDefault(); 
             const formData = new FormData(this);
             const dadosChecklist = Object.fromEntries(formData.entries());
             dadosChecklist.dataHora = new Date().toLocaleString('pt-BR');
-
-            // Aqui você decide o que fazer com os dados. 
-            // Por enquanto, vamos exibir no console do navegador.
             console.log("Checklist Finalizado:", dadosChecklist);
             alert("Checklist salvo com sucesso!");
-            
-            // Limpa o formulário
             this.reset();
+        });
+
+        // Lógica para capturar a Placa via QR Code (URL)
+        window.addEventListener('DOMContentLoaded', (event) => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const placaDaURL = urlParams.get('placa');
+
+            if (placaDaURL) {
+                const inputPlaca = document.getElementById('placa');
+                inputPlaca.value = placaDaURL.toUpperCase(); 
+                inputPlaca.readOnly = true; 
+                inputPlaca.style.backgroundColor = "#e9ecef"; 
+            }
         });
     </script>
 </body>
 </html>
-// Lógica para capturar a Placa via QR Code (URL)
-        window.addEventListener('DOMContentLoaded', (event) => {
-            // Busca os parâmetros na barra de endereços
-            const urlParams = new URLSearchParams(window.location.search);
-            const placaDaURL = urlParams.get('placa');
-
-            // Se existir uma placa no link, preenche e bloqueia o campo
-            if (placaDaURL) {
-                const inputPlaca = document.getElementById('placa');
-                inputPlaca.value = placaDaURL.toUpperCase(); // Deixa maiúsculo
-                inputPlaca.readOnly = true; // Impede que o motorista apague
-                inputPlaca.style.backgroundColor = "#e9ecef"; // Deixa o campo cinza (visual de bloqueado)
-            }
-        });
