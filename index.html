@@ -257,8 +257,8 @@
                         <input type="text" id="v-modelo" required placeholder="Saveiro" class="w-full p-2 border rounded text-sm">
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-xs font-bold mb-1">E-mail para Alertas:</label>
-                        <input type="email" id="v-email" required placeholder="oficina@empresa.com" class="w-full p-2 border rounded text-sm">
+                        <label class="block text-xs font-bold mb-1">E-mails para Alertas <span class="font-normal text-gray-500">(separe por vírgula)</span>:</label>
+                        <input type="text" id="v-email" required placeholder="oficina@empresa.com, gerente@empresa.com" class="w-full p-2 border rounded text-sm">
                     </div>
                     
                     <div>
@@ -475,7 +475,7 @@
                 kmUltimaTrocaOleo: kmOleoUltima,
                 kmIntervaloOleo: parseInt(document.getElementById('v-km-oleo-intervalo').value),
                 kmAtual: kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima, // Inicia com o maior KM
-                emailAlerta: document.getElementById('v-email').value
+                emailAlerta: document.getElementById('v-email').value.replace(/\s+/g, '').replace(/;/g, ',')
             };
 
             vehicles.push(newVehicle);
