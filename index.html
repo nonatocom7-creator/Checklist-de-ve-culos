@@ -333,29 +333,8 @@
     <!-- ======================================= -->
     <!-- JAVASCRIPT & FIREBASE                   -->
     <!-- ======================================= -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Configuração do Firebase Injetada pelo Ambiente
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'frota-leve-db';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Fallback vázio */ };
-        
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        let currentUser = null;
-
-        // Arrays globais para manter o estado localmente para renderização rápida
-        let globalVehicles = [];
-        let globalChecklists = [];
-        
-        // Estado da aplicação (Interface)
-        let isAdmin = false;
-        let conformityChartInstance = null;
-
-        // Categorias Atualizadas (Sem lona marítima/ganchos)
+    <script>
+        // Renderização imediata das perguntas para evitar tela em branco
         const categoriasChecklist = [
             {
                 titulo: "Caçamba e Amarração",
@@ -375,6 +354,85 @@
             }
         ];
 
+        function renderChecklistForm() {
+            const container = document.getElementById('checklistContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            categoriasChecklist.forEach((cat, catIndex) => {
+                let htmlDiv = `<div class="card"><h3 class="text-lg font-bold text-blue-800 mb-3">${cat.titulo}</h3>`;
+                
+                cat.itens.forEach((item, itemIndex) => {
+                    const inputName = `item_${catIndex}_${itemIndex}`;
+                    const obsName = `obs_${catIndex}_${itemIndex}`;
+                    htmlDiv += `
+                        <div class="checklist-item">
+                            <span class="block mb-2 font-medium text-gray-800">${item}</span>
+                            <input type="hidden" name="label_${inputName}" value="${item}">
+                            <div class="options">
+                                <label>
+                                    <input type="radio" name="${inputName}" value="Conforme" required>
+                                    <div class="btn-radio text-sm md:text-base">OK</div>
+                                </label>
+                                <label>
+                                    <input type="radio" name="${inputName}" value="Nao Conforme">
+                                    <div class="btn-radio text-sm md:text-base">Avaria</div>
+                                </label>
+                            </div>
+                            <input type="text" name="${obsName}" placeholder="Observações sobre este item (opcional)" class="w-full mt-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-300 outline-none">
+                        </div>`;
+                });
+                htmlDiv += `</div>`;
+                container.innerHTML += htmlDiv;
+            });
+        }
+
+        // Executa imediatamente no carregamento da página
+        document.addEventListener("DOMContentLoaded", () => {
+            renderChecklistForm();
+            verificarQRCodeURL();
+        });
+
+        function verificarQRCodeURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const placaDaURL = urlParams.get('placa');
+
+            if (placaDaURL) {
+                const inputPlaca = document.getElementById('placa');
+                if(inputPlaca) {
+                    inputPlaca.value = placaDaURL.toUpperCase(); 
+                    inputPlaca.readOnly = true; 
+                    inputPlaca.classList.add('bg-gray-200', 'cursor-not-allowed', 'text-gray-600');
+                    
+                    const hint = document.getElementById('placa-hint');
+                    if(hint) {
+                        hint.innerText = "✅ Placa identificada pelo QR Code.";
+                        hint.classList.add("text-green-600", "font-bold");
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuração do Firebase Injetada pelo Ambiente
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'frota-leve-db';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Fallback vázio */ };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let currentUser = null;
+
+        let globalVehicles = [];
+        let globalChecklists = [];
+        let isAdmin = false;
+        let conformityChartInstance = null;
+
         async function initializeDatabaseConnection() {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -385,22 +443,19 @@
                     currentUser = userCredential.user;
                 }
                 
-                // Iniciar observadores do banco de dados APÓS o login
                 setupRealtimeListeners();
             } catch (error) {
                 console.error("Erro ao conectar no banco:", error);
-                showMessage("Erro de Conexão", "Não foi possível conectar ao banco de dados na nuvem.");
+                window.showMessage("Erro de Conexão", "Não foi possível conectar ao banco de dados na nuvem.");
             }
         }
 
         function setupRealtimeListeners() {
             if (!currentUser) return;
 
-            // Referências de Caminho Público (para que administradores e motoristas compartilhem a mesma lista)
             const vehiclesRef = collection(db, 'artifacts', appId, 'public', 'data', 'vehicles');
             const checklistsRef = collection(db, 'artifacts', appId, 'public', 'data', 'checklists');
 
-            // Fica "escutando" mudanças nos veículos
             onSnapshot(vehiclesRef, (snapshot) => {
                 globalVehicles = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 if (isAdmin) {
@@ -411,23 +466,15 @@
                 console.error("Erro ao carregar veículos:", error);
             });
 
-            // Fica "escutando" novos checklists
             onSnapshot(checklistsRef, (snapshot) => {
                 globalChecklists = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                
-                // Ordenar por data em memória (Regra 2 do Firestore: evitar orderBy)
                 globalChecklists.sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora));
-                
                 if (isAdmin) renderDashboard();
             }, (error) => {
                 console.error("Erro ao carregar checklists:", error);
             });
         }
 
-        // ==========================================
-        // EXPORTANDO FUNÇÕES PARA O HTML (WINDOW)
-        // ==========================================
-        
         window.showMessage = function(title, text) {
             document.getElementById('msgTitle').innerText = title;
             document.getElementById('msgText').innerText = text;
@@ -506,43 +553,6 @@
             
             new QRCode(qrContainer, { text: finalUrl, width: 180, height: 180, colorDark : "#0056b3", colorLight : "#ffffff" });
         };
-
-        // ==========================================
-        // RENDERIZAÇÃO E FORMULÁRIOS
-        // ==========================================
-        
-        function renderChecklistForm() {
-            const container = document.getElementById('checklistContainer');
-            if (!container) return;
-            container.innerHTML = '';
-            
-            categoriasChecklist.forEach((cat, catIndex) => {
-                let htmlDiv = `<div class="card"><h3 class="text-lg font-bold text-blue-800 mb-3">${cat.titulo}</h3>`;
-                
-                cat.itens.forEach((item, itemIndex) => {
-                    const inputName = `item_${catIndex}_${itemIndex}`;
-                    const obsName = `obs_${catIndex}_${itemIndex}`;
-                    htmlDiv += `
-                        <div class="checklist-item">
-                            <span class="block mb-2 font-medium text-gray-800">${item}</span>
-                            <input type="hidden" name="label_${inputName}" value="${item}">
-                            <div class="options">
-                                <label>
-                                    <input type="radio" name="${inputName}" value="Conforme" required>
-                                    <div class="btn-radio text-sm md:text-base">OK</div>
-                                </label>
-                                <label>
-                                    <input type="radio" name="${inputName}" value="Nao Conforme">
-                                    <div class="btn-radio text-sm md:text-base">Avaria</div>
-                                </label>
-                            </div>
-                            <input type="text" name="${obsName}" placeholder="Observações sobre este item (opcional)" class="w-full mt-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-300 outline-none">
-                        </div>`;
-                });
-                htmlDiv += `</div>`;
-                container.innerHTML += htmlDiv;
-            });
-        }
 
         document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -811,32 +821,8 @@
             document.body.removeChild(link);
         };
 
-        function verificarQRCodeURL() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const placaDaURL = urlParams.get('placa');
-
-            if (placaDaURL) {
-                const inputPlaca = document.getElementById('placa');
-                if(inputPlaca) {
-                    inputPlaca.value = placaDaURL.toUpperCase(); 
-                    inputPlaca.readOnly = true; 
-                    inputPlaca.classList.add('bg-gray-200', 'cursor-not-allowed', 'text-gray-600');
-                    
-                    const hint = document.getElementById('placa-hint');
-                    if(hint) {
-                        hint.innerText = "✅ Placa identificada pela Nuvem / QR Code.";
-                        hint.classList.add("text-green-600", "font-bold");
-                    }
-                }
-            }
-        }
-
-        // Boot executado imediatamente ao carregar
-        window.addEventListener('DOMContentLoaded', () => {
-            renderChecklistForm(); // Renderiza os itens do checklist na tela
-            verificarQRCodeURL();    // Lê a placa se veio pelo QR Code
-            initializeDatabaseConnection(); // Conecta com o Firebase
-        });
+        // Inicializar banco após carregamento
+        initializeDatabaseConnection();
     </script>
 </body>
 </html>
