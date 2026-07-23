@@ -331,14 +331,13 @@
     </div>
 
     <!-- ======================================= -->
-    <!-- JAVASCRIPT & FIREBASE                   -->
+    <!-- JAVASCRIPT & UI CONTROLS                -->
     <!-- ======================================= -->
     <script>
-        // Renderização imediata das perguntas para evitar tela em branco
         const categoriasChecklist = [
             {
                 titulo: "Caçamba e Amarração",
-                itens: ["Fechadura da tampa traseira", "Condições gerais da caçamba"]
+                itens: ["Capota marítima (lona e vedação)", "Fechadura da tampa traseira"]
             },
             {
                 titulo: "Pneus e Emergência",
@@ -387,13 +386,28 @@
             });
         }
 
-        // Executa imediatamente no carregamento da página
+        window.switchTab = function(tabId, btnElement) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            if(btnElement) btnElement.classList.add('active');
+        };
+
+        window.showMessage = function(title, text) {
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgText').innerText = text;
+            document.getElementById('messageModal').style.display = 'flex';
+        };
+
+        window.closeModal = function(id) {
+            document.getElementById(id).style.display = 'none';
+        };
+
+        // Renderização imediata na carga da página
         document.addEventListener("DOMContentLoaded", () => {
             renderChecklistForm();
-            verificarQRCodeURL();
-        });
-
-        function verificarQRCodeURL() {
+            
             const urlParams = new URLSearchParams(window.location.search);
             const placaDaURL = urlParams.get('placa');
 
@@ -411,17 +425,19 @@
                     }
                 }
             }
-        }
+        });
     </script>
 
+    <!-- ======================================= -->
+    <!-- FIREBASE & DATABASE MODULE              -->
+    <!-- ======================================= -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Configuração do Firebase Injetada pelo Ambiente
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'frota-leve-db';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Fallback vázio */ };
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "demo", projectId: "demo" };
         
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -442,11 +458,9 @@
                     const userCredential = await signInAnonymously(auth);
                     currentUser = userCredential.user;
                 }
-                
                 setupRealtimeListeners();
             } catch (error) {
                 console.error("Erro ao conectar no banco:", error);
-                window.showMessage("Erro de Conexão", "Não foi possível conectar ao banco de dados na nuvem.");
             }
         }
 
@@ -462,39 +476,14 @@
                     renderVehicles();
                     renderDashboard();
                 }
-            }, (error) => {
-                console.error("Erro ao carregar veículos:", error);
-            });
+            }, (error) => { console.error("Erro veículos:", error); });
 
             onSnapshot(checklistsRef, (snapshot) => {
                 globalChecklists = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 globalChecklists.sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora));
                 if (isAdmin) renderDashboard();
-            }, (error) => {
-                console.error("Erro ao carregar checklists:", error);
-            });
+            }, (error) => { console.error("Erro checklists:", error); });
         }
-
-        window.showMessage = function(title, text) {
-            document.getElementById('msgTitle').innerText = title;
-            document.getElementById('msgText').innerText = text;
-            document.getElementById('messageModal').style.display = 'flex';
-        };
-
-        window.closeModal = function(id) {
-            document.getElementById(id).style.display = 'none';
-        };
-
-        window.switchTab = function(tabId, btnElement) {
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            
-            document.getElementById(tabId).classList.add('active');
-            if(btnElement) btnElement.classList.add('active');
-
-            if(tabId === 'view-dashboard') renderDashboard();
-            if(tabId === 'view-vehicles') renderVehicles();
-        };
 
         window.logout = function() {
             isAdmin = false;
@@ -520,18 +509,16 @@
             if(!veiculo) return;
 
             const vehicleRef = doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', id);
-            
             try {
                 if(tipo === 'revisao') {
                     await updateDoc(vehicleRef, { kmUltimaManutencao: veiculo.kmAtual || veiculo.kmUltimaManutencao });
-                    window.showMessage("Revisão Confirmada na Nuvem", `Ciclo de REVISÃO reiniciado para o KM ${veiculo.kmAtual}.`);
+                    window.showMessage("Revisão Confirmada", `Ciclo de REVISÃO reiniciado para o KM ${veiculo.kmAtual}.`);
                 } else if(tipo === 'oleo') {
                     await updateDoc(vehicleRef, { kmUltimaTrocaOleo: veiculo.kmAtual || veiculo.kmUltimaTrocaOleo || veiculo.kmUltimaManutencao });
-                    window.showMessage("Óleo Confirmado na Nuvem", `Ciclo de ÓLEO reiniciado para o KM ${veiculo.kmAtual}.`);
+                    window.showMessage("Óleo Confirmado", `Ciclo de ÓLEO reiniciado para o KM ${veiculo.kmAtual}.`);
                 }
             } catch(e) {
-                console.error(e);
-                window.showMessage("Erro", "Não foi possível confirmar a manutenção na nuvem.");
+                window.showMessage("Erro", "Não foi possível confirmar a manutenção.");
             }
         };
 
@@ -556,7 +543,7 @@
 
         document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if(!currentUser) { window.showMessage("Erro", "Você precisa estar conectado."); return; }
+            if(!currentUser) { window.showMessage("Erro", "Aguarde a conexão com o banco."); return; }
 
             const btn = document.getElementById('btnSubmitVehicle');
             btn.disabled = true;
@@ -590,7 +577,6 @@
                 window.showMessage("Sucesso", "Veículo salvo na nuvem com sucesso!");
                 this.reset();
             } catch (error) {
-                console.error(error);
                 window.showMessage("Erro", "Falha ao salvar veículo.");
             } finally {
                 btn.disabled = false; btn.innerText = "Salvar Veículo na Nuvem";
@@ -645,11 +631,8 @@
                 window.showMessage("Checklist Salvo!", "Os dados foram sincronizados com a nuvem.");
                 this.reset();
                 window.scrollTo(0,0);
-                verificarQRCodeURL();
-                
             } catch (error) {
-                console.error(error);
-                window.showMessage("Erro", "Ocorreu um erro ao enviar para a nuvem. Verifique sua conexão.");
+                window.showMessage("Erro", "Ocorreu um erro ao enviar para a nuvem.");
             } finally {
                 btn.disabled = false; btn.innerText = "Salvar Checklist";
             }
@@ -705,7 +688,7 @@
                     <button onclick="dispararEmail('${v.emailAlerta}', '${v.placa}', ${v.kmAtual || 0}, ${kmProxRev}, ${kmProxOleo})" class="text-blue-500 hover:text-blue-800" title="Enviar e-mail de alerta">
                         <svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     </button>
-                ` : `<span class="text-gray-300"><svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></span>`;
+                ` : `<span class="text-gray-300"><svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2 z"></path></svg></span>`;
 
                 const row = `
                     <tr class="hover:bg-gray-50 transition-colors">
@@ -715,14 +698,14 @@
                         <td class="p-3 flex flex-col justify-center">${statusHtml}</td>
                         <td class="p-3 text-center">${emailBtn}</td>
                         <td class="p-3 text-center whitespace-nowrap">
-                            <button onclick="confirmarManutencao('${v.id}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão Geral (Chave)">
-                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <button onclick="confirmarManutencao('${v.id}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão Geral">
+                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
                             </button>
-                            <button onclick="confirmarManutencao('${v.id}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo (Gota)">
+                            <button onclick="confirmarManutencao('${v.id}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo">
                                 <svg class="w-5 h-5 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2c-5.333 7.333-8 11.556-8 15a8 8 0 1016 0c0-3.444-2.667-7.667-8-15zm-2 15a2 2 0 114 0 2 2 0 01-4 0z"></path></svg>
                             </button>
                             <button onclick="generateQR('${v.placa}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Gerar QR Code">
-                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1 z"></path></svg>
+                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                             </button>
                             <button onclick="deleteVehicle('${v.id}')" class="text-red-600 hover:text-red-800" title="Excluir">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -821,7 +804,7 @@
             document.body.removeChild(link);
         };
 
-        // Inicializar banco após carregamento
+        // Iniciar conexão com banco
         initializeDatabaseConnection();
     </script>
 </body>
