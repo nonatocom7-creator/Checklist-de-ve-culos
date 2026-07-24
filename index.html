@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sistema Frota Leve</title>
+    <title>Sistema Frota Leve - Cloud</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js para o Dashboard -->
@@ -24,6 +24,7 @@
             background-color: var(--bg);
             margin: 0;
             color: #333;
+            overflow-y: scroll; /* Mantém a barra lateral fixa para a tela não pular */
         }
         .tab-btn {
             padding: 10px 15px;
@@ -114,7 +115,7 @@
 
     <!-- Header / Nav -->
     <div class="bg-white shadow-md sticky top-0 z-40">
-        <div class="max-w-4xl mx-auto flex overflow-x-auto">
+        <div class="max-w-4xl mx-auto flex overflow-x-auto flex-nowrap shrink-0">
             <div class="tab-btn active whitespace-nowrap" onclick="switchTab('view-checklist', this)">📝 Novo Checklist</div>
             <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-login', this)" id="tab-login">🔒 Login Admin</div>
             <div class="tab-btn whitespace-nowrap hidden admin-only" onclick="switchTab('view-dashboard', this)">📊 Dashboard</div>
@@ -140,7 +141,6 @@
                         </div>
                         <div>
                             <label class="block font-bold mb-2">Placa do Veículo:</label>
-                            <!-- Input changed to allow both manual entry and QR Code auto-fill -->
                             <input type="text" id="placa" name="placa" required placeholder="Ex: ABC-1234" class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold">
                             <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou use o QR Code.</p>
                         </div>
@@ -151,7 +151,6 @@
                     </div>
                 </div>
 
-                <!-- Container gerado dinamicamente -->
                 <div id="checklistContainer"></div>
 
                 <div class="card">
@@ -162,7 +161,7 @@
                     <input type="file" id="foto" name="foto" accept="image/*" capture="environment" class="w-full p-2 border rounded bg-gray-50">
                 </div>
 
-                <button type="submit" class="btn-submit">Salvar Checklist</button>
+                <button type="submit" class="btn-submit" id="btnSalvar">Salvar Checklist</button>
             </form>
         </div>
 
@@ -215,9 +214,12 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="card">
+                <div class="card flex flex-col">
                     <h3 class="font-bold text-gray-700 mb-4 text-center">Índice de Conformidade (Itens)</h3>
-                    <canvas id="conformityChart"></canvas>
+                    <!-- Adicionado div com altura fixa h-64 para evitar que a tela pisque/cresça infinitamente -->
+                    <div class="relative w-full h-64 flex-grow">
+                        <canvas id="conformityChart"></canvas>
+                    </div>
                 </div>
                 <div class="card overflow-auto max-h-96">
                     <h3 class="font-bold text-gray-700 mb-4">Últimos Checklists</h3>
@@ -279,7 +281,7 @@
                     </div>
 
                     <div class="md:col-span-4 mt-2">
-                        <button type="submit" class="w-full bg-green-600 text-white p-2 rounded font-bold hover:bg-green-700 h-full mt-1">Salvar Veículo</button>
+                        <button type="submit" class="w-full bg-green-600 text-white p-2 rounded font-bold hover:bg-green-700 h-full mt-1" id="btnSalvarVeiculo">Salvar Veículo</button>
                     </div>
                 </form>
             </div>
@@ -330,18 +332,44 @@
     </div>
 
     <!-- ======================================= -->
-    <!-- JAVASCRIPT LOGIC                        -->
+    <!-- JAVASCRIPT LOGIC (FIREBASE CLOUD MODULE)-->
     <!-- ======================================= -->
-    <script>
-        // Chaves do LocalStorage
-        const CHECKLISTS_KEY = 'frota_checklists_v4';
-        const VEHICLES_KEY = 'frota_vehicles_v4';
-        
-        // Estado da aplicação
+    <script type="module">
+        // Importando bibliotecas do Firebase via CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Suas configurações oficiais do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDZWxIZgI6qFwi2bJ7k_gUTgF7UVwni-pU",
+            authDomain: "adad-f20c4.firebaseapp.com",
+            projectId: "adad-f20c4",
+            storageBucket: "adad-f20c4.firebasestorage.app",
+            messagingSenderId: "151878623734",
+            appId: "1:151878623734:web:8b8524b3f95a8cbc13a7d7",
+            measurementId: "G-RD6NNKFTLT"
+        };
+
+        // Inicialização do Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Realiza o login anônimo automático para ter permissão de gravar no banco
+        signInAnonymously(auth).then(() => {
+            console.log("Firebase Conectado com Sucesso!");
+        }).catch((error) => {
+            console.error("Erro na autenticação:", error);
+        });
+
+        // Estado da aplicação (Variáveis que recebem dados da Nuvem)
         let isAdmin = false;
         let conformityChartInstance = null;
+        let listaChecklistsCloud = [];
+        let listaVeiculosCloud = [];
         
-        // Definição atualizada do Checklist (Sem marítima, sem ganchos, com observações)
+        // Definição do Checklist
         const categoriasChecklist = [
             {
                 titulo: "Caçamba e Amarração",
@@ -361,33 +389,50 @@
             }
         ];
 
-        // Funções de Interface Auxiliares
+        // Escutadores em Tempo Real (Atualizam as listas assim que algo muda no banco)
+        onSnapshot(collection(db, "checklists"), (snapshot) => {
+            listaChecklistsCloud = snapshot.docs.map(doc => ({ id_doc: doc.id, ...doc.data() }));
+            if(isAdmin) renderDashboard();
+        });
+
+        onSnapshot(collection(db, "vehicles"), (snapshot) => {
+            listaVeiculosCloud = snapshot.docs.map(doc => ({ id_doc: doc.id, ...doc.data() }));
+            if(isAdmin) {
+                renderVehicles();
+                renderDashboard();
+            }
+        });
+
+        // Expondo funções para o HTML acessar (necessário porque script é do tipo module)
+        window.switchTab = function(tabId, btnElement) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            if(btnElement) btnElement.classList.add('active');
+
+            if(tabId === 'view-dashboard') renderDashboard();
+            if(tabId === 'view-vehicles') renderVehicles();
+        };
+
+        window.closeModal = function(id) {
+            document.getElementById(id).style.display = 'none';
+        };
+
         function showMessage(title, text) {
             document.getElementById('msgTitle').innerText = title;
             document.getElementById('msgText').innerText = text;
             document.getElementById('messageModal').style.display = 'flex';
         }
 
-        function closeModal(id) {
-            document.getElementById(id).style.display = 'none';
-        }
+        window.logout = function() {
+            isAdmin = false;
+            document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-login').classList.remove('hidden');
+            window.switchTab('view-checklist', document.querySelector('[onclick="switchTab(\'view-checklist\', this)"]'));
+        };
 
-        function switchTab(tabId, btnElement) {
-            // Oculta todas as views
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            // Remove active dos botoes
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            
-            // Ativa a selecionada
-            document.getElementById(tabId).classList.add('active');
-            if(btnElement) btnElement.classList.add('active');
-
-            // Renderiza dados se for dashboard ou veículos
-            if(tabId === 'view-dashboard') renderDashboard();
-            if(tabId === 'view-vehicles') renderVehicles();
-        }
-
-        // Renderiza o Formulário do Checklist (Driver)
+        // Renderiza o Formulário
         function renderChecklistForm() {
             const container = document.getElementById('checklistContainer');
             container.innerHTML = '';
@@ -412,7 +457,6 @@
                                     <div class="btn-radio">Avaria</div>
                                 </label>
                             </div>
-                            <!-- Campo de observação específico para o item -->
                             <input type="text" name="${obsName}" placeholder="Observações sobre este item (opcional)" class="w-full mt-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-300 outline-none">
                         </div>`;
                 });
@@ -431,35 +475,24 @@
                 isAdmin = true;
                 document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
                 document.getElementById('tab-login').classList.add('hidden');
-                switchTab('view-dashboard', document.querySelector('[onclick="switchTab(\'view-dashboard\', this)"]'));
+                window.switchTab('view-dashboard', document.querySelector('[onclick="switchTab(\'view-dashboard\', this)"]'));
                 showMessage("Sucesso", "Acesso Administrativo Liberado!");
             } else {
                 showMessage("Erro", "Credenciais inválidas.");
             }
         });
 
-        function logout() {
-            isAdmin = false;
-            document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-            document.getElementById('tab-login').classList.remove('hidden');
-            switchTab('view-checklist', document.querySelector('[onclick="switchTab(\'view-checklist\', this)"]'));
-        }
-
-        // Gestão de Veículos
-        function getVehicles() {
-            return JSON.parse(localStorage.getItem(VEHICLES_KEY)) || [];
-        }
-        function saveVehicles(vehicles) {
-            localStorage.setItem(VEHICLES_KEY, JSON.stringify(vehicles));
-        }
-
-        document.getElementById('vehicleForm').addEventListener('submit', function(e) {
+        // Cadastro de Veículo (Gravando no Firestore)
+        document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const vehicles = getVehicles();
+            const btn = document.getElementById('btnSalvarVeiculo');
+            btn.innerText = "Salvando..."; btn.disabled = true;
+
             const novaPlaca = document.getElementById('v-placa').value.toUpperCase();
             
-            if(vehicles.some(v => v.placa === novaPlaca)) {
+            if(listaVeiculosCloud.some(v => v.placa === novaPlaca)) {
                 showMessage("Erro", "Veículo com esta placa já cadastrado!");
+                btn.innerText = "Salvar Veículo"; btn.disabled = false;
                 return;
             }
 
@@ -467,35 +500,37 @@
             const kmOleoUltima = parseInt(document.getElementById('v-km-oleo-ultima').value);
 
             const newVehicle = {
-                id: Date.now().toString(),
                 placa: novaPlaca,
                 modelo: document.getElementById('v-modelo').value,
                 kmUltimaManutencao: kmUltima,
                 kmIntervalo: parseInt(document.getElementById('v-km-intervalo').value),
                 kmUltimaTrocaOleo: kmOleoUltima,
                 kmIntervaloOleo: parseInt(document.getElementById('v-km-oleo-intervalo').value),
-                kmAtual: kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima, // Inicia com o maior KM
-                emailAlerta: document.getElementById('v-email').value
+                kmAtual: kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima,
+                emailAlerta: document.getElementById('v-email').value,
+                dataCadastro: new Date().toISOString()
             };
 
-            vehicles.push(newVehicle);
-            saveVehicles(vehicles);
-            this.reset();
-            renderVehicles();
-            showMessage("Sucesso", "Veículo cadastrado!");
+            try {
+                await addDoc(collection(db, "vehicles"), newVehicle);
+                this.reset();
+                showMessage("Sucesso", "Veículo cadastrado na nuvem!");
+            } catch (error) {
+                showMessage("Erro", "Falha ao salvar veículo. Verifique a conexão.");
+                console.error(error);
+            }
+            btn.innerText = "Salvar Veículo"; btn.disabled = false;
         });
 
+        // Renderiza lista de Veículos
         function renderVehicles() {
-            const vehicles = getVehicles();
             const tbody = document.getElementById('vehicles-table-body');
             tbody.innerHTML = '';
 
-            vehicles.forEach(v => {
-                // Cálculo Revisão
+            listaVeiculosCloud.forEach(v => {
                 const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
                 const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
                 
-                // Cálculo Óleo (compatibilidade com registros antigos)
                 const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? v.kmUltimaTrocaOleo : (v.kmUltimaManutencao || 0);
                 const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? v.kmIntervaloOleo : 10000;
                 const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
@@ -503,7 +538,6 @@
                 
                 let precisaAlerta = (kmFaltanteRev <= 1000) || (kmFaltanteOleo <= 1000);
                 
-                // Função auxiliar para criar as badges de status
                 const getStatusBadge = (label, faltante) => {
                     if (faltante <= 0) return `<div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${label}: Atrasado!</div>`;
                     if (faltante <= 1000) return `<div class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${label}: em ${faltante}km</div>`;
@@ -511,8 +545,6 @@
                 };
 
                 const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo);
-
-                // Botão de e-mail acionado se precisar de alerta
                 const emailBtn = precisaAlerta ? `
                     <button onclick="dispararEmail('${v.emailAlerta}', '${v.placa}', ${v.kmAtual || 0}, ${kmProxRev}, ${kmProxOleo})" class="text-blue-500 hover:text-blue-800" title="Enviar e-mail de alerta">
                         <svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
@@ -527,16 +559,16 @@
                         <td class="p-3 flex flex-col justify-center">${statusHtml}</td>
                         <td class="p-3 text-center">${emailBtn}</td>
                         <td class="p-3 text-center whitespace-nowrap">
-                            <button onclick="confirmarManutencao('${v.id}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão Geral">
+                            <button onclick="confirmarManutencao('${v.id_doc}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão Geral">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                             </button>
-                            <button onclick="confirmarManutencao('${v.id}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo">
+                            <button onclick="confirmarManutencao('${v.id_doc}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2.25c-2.485 5.5-5.25 8.75-5.25 12.75a5.25 5.25 0 0010.5 0c0-4-2.765-7.25-5.25-12.75z"></path></svg>
                             </button>
                             <button onclick="generateQR('${v.placa}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Gerar QR Code">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                             </button>
-                            <button onclick="deleteVehicle('${v.id}')" class="text-red-600 hover:text-red-800" title="Excluir">
+                            <button onclick="deleteVehicle('${v.id_doc}')" class="text-red-600 hover:text-red-800" title="Excluir">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </td>
@@ -546,39 +578,45 @@
             });
         }
 
-        function confirmarManutencao(id, tipo) {
-            let vehicles = getVehicles();
-            const index = vehicles.findIndex(v => v.id === id);
-            if(index > -1) {
-                if(tipo === 'revisao') {
-                    vehicles[index].kmUltimaManutencao = vehicles[index].kmAtual || vehicles[index].kmUltimaManutencao;
-                    showMessage("Revisão Registrada", `O ciclo de REVISÃO da placa ${vehicles[index].placa} foi reiniciado para o KM ${vehicles[index].kmAtual}.`);
-                } else if(tipo === 'oleo') {
-                    vehicles[index].kmUltimaTrocaOleo = vehicles[index].kmAtual || vehicles[index].kmUltimaTrocaOleo || vehicles[index].kmUltimaManutencao;
-                    showMessage("Troca de Óleo Registrada", `O ciclo de ÓLEO da placa ${vehicles[index].placa} foi reiniciado para o KM ${vehicles[index].kmAtual}.`);
+        window.confirmarManutencao = async function(docId, tipo) {
+            const veiculo = listaVeiculosCloud.find(v => v.id_doc === docId);
+            if(veiculo) {
+                const docRef = doc(db, "vehicles", docId);
+                try {
+                    if(tipo === 'revisao') {
+                        const novoKmManutencao = veiculo.kmAtual || veiculo.kmUltimaManutencao;
+                        await updateDoc(docRef, { kmUltimaManutencao: novoKmManutencao });
+                        showMessage("Revisão Registrada", `Ciclo de REVISÃO atualizado para KM ${novoKmManutencao}.`);
+                    } else if(tipo === 'oleo') {
+                        const novoKmOleo = veiculo.kmAtual || veiculo.kmUltimaTrocaOleo || veiculo.kmUltimaManutencao;
+                        await updateDoc(docRef, { kmUltimaTrocaOleo: novoKmOleo });
+                        showMessage("Troca de Óleo Registrada", `Ciclo de ÓLEO atualizado para KM ${novoKmOleo}.`);
+                    }
+                } catch(error) {
+                    showMessage("Erro", "Não foi possível atualizar a manutenção no banco de dados.");
+                    console.error(error);
                 }
-                
-                saveVehicles(vehicles);
-                renderVehicles();
-                renderDashboard();
             }
-        }
+        };
 
-        function dispararEmail(email, placa, kmAtual, kmProxRev, kmProxOleo) {
+        window.dispararEmail = function(email, placa, kmAtual, kmProxRev, kmProxOleo) {
             const subject = encodeURIComponent(`Alerta de Manutencao/Oleo - Veiculo ${placa}`);
             const body = encodeURIComponent(`Olá equipe,\n\nO veículo de placa ${placa} possui serviços próximos ou em atraso.\n\nKM Atual: ${kmAtual}\n\nPróxima Revisão: ${kmProxRev} km\nPróxima Troca de Óleo: ${kmProxOleo} km\n\nPor favor, verifique a necessidade de agendamento.\n\nSistema Frota Leve`);
             window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-        }
+        };
 
-        function deleteVehicle(id) {
-            let vehicles = getVehicles();
-            vehicles = vehicles.filter(v => v.id !== id);
-            saveVehicles(vehicles);
-            renderVehicles();
-        }
+        window.deleteVehicle = async function(docId) {
+            if(confirm("Tem certeza que deseja excluir este veículo?")) {
+                try {
+                    await deleteDoc(doc(db, "vehicles", docId));
+                    showMessage("Sucesso", "Veículo removido da nuvem.");
+                } catch(error) {
+                    showMessage("Erro", "Falha ao remover veículo.");
+                }
+            }
+        };
 
-        // Gera QR Code
-        function generateQR(placa) {
+        window.generateQR = function(placa) {
             document.getElementById('qrModal').style.display = 'flex';
             document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
             
@@ -596,20 +634,19 @@
                 colorLight : "#ffffff",
                 correctLevel : QRCode.CorrectLevel.H
             });
-        }
+        };
 
-        function getChecklists() {
-            return JSON.parse(localStorage.getItem(CHECKLISTS_KEY)) || [];
-        }
-
-        document.getElementById('checklistForm').addEventListener('submit', function(e) {
+        // Salvar Checklist no Firestore
+        document.getElementById('checklistForm').addEventListener('submit', async function(e) {
             e.preventDefault(); 
+            const btn = document.getElementById('btnSalvar');
+            btn.innerText = "Enviando para nuvem..."; btn.disabled = true;
+
             const formData = new FormData(this);
             const kmInformado = parseInt(formData.get('km'));
             const placaInformada = formData.get('placa').toUpperCase();
             
             const novoChecklist = {
-                id: Date.now().toString(),
                 dataHora: new Date().toISOString(),
                 motorista: formData.get('motorista'),
                 placa: placaInformada,
@@ -635,43 +672,35 @@
             
             novoChecklist.temAvaria = avariasCount > 0;
 
-            // Salva Checklist
-            const checklists = getChecklists();
-            checklists.push(novoChecklist);
-            localStorage.setItem(CHECKLISTS_KEY, JSON.stringify(checklists));
-
-            // Atualiza KM do Veículo na base de dados
-            let vehicles = getVehicles();
-            let veiculoAtualizado = false;
-            vehicles = vehicles.map(v => {
-                if(v.placa === placaInformada) {
-                    // Atualiza o KM atual apenas se o informado for maior
-                    if(kmInformado > (v.kmAtual || 0)) {
-                        v.kmAtual = kmInformado;
-                        veiculoAtualizado = true;
-                    }
+            try {
+                // 1. Grava o checklist
+                await addDoc(collection(db, "checklists"), novoChecklist);
+                
+                // 2. Atualiza o KM do Veículo correspondente (se existir)
+                const veiculoRef = listaVeiculosCloud.find(v => v.placa === placaInformada);
+                if(veiculoRef && kmInformado > (veiculoRef.kmAtual || 0)) {
+                    await updateDoc(doc(db, "vehicles", veiculoRef.id_doc), { kmAtual: kmInformado });
                 }
-                return v;
-            });
-            if(veiculoAtualizado) saveVehicles(vehicles);
 
-            showMessage("Checklist Salvo!", "Os dados foram enviados com sucesso e o KM do veículo foi atualizado.");
-            this.reset();
-            window.scrollTo(0,0);
-            
-            verificarQRCodeURL();
+                showMessage("Checklist Salvo!", "Enviado para a nuvem com sucesso!");
+                this.reset();
+                window.scrollTo(0,0);
+                verificarQRCodeURL();
+            } catch(error) {
+                showMessage("Erro", "Ocorreu um erro de conexão ao salvar na nuvem.");
+                console.error(error);
+            }
+
+            btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
 
+        // Dashboard e Relatórios
         function renderDashboard() {
-            const checklists = getChecklists();
-            const vehicles = getVehicles();
+            document.getElementById('dash-total-checklists').innerText = listaChecklistsCloud.length;
+            document.getElementById('dash-total-vehicles').innerText = listaVeiculosCloud.length;
             
-            document.getElementById('dash-total-checklists').innerText = checklists.length;
-            document.getElementById('dash-total-vehicles').innerText = vehicles.length;
-            
-            // Calcula alertas de manutenção por KM pendentes
             let alertas = 0;
-            vehicles.forEach(v => {
+            listaVeiculosCloud.forEach(v => {
                 const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
                 const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
                 
@@ -688,7 +717,7 @@
             let totalConformes = 0;
             let totalAvarias = 0;
             
-            checklists.forEach(c => {
+            listaChecklistsCloud.forEach(c => {
                 c.itens.forEach(i => {
                     if(i.status === 'Conforme') totalConformes++;
                     if(i.status === 'Nao Conforme') totalAvarias++;
@@ -719,7 +748,7 @@
             const tbody = document.getElementById('recent-checklists-body');
             tbody.innerHTML = '';
             
-            const recentes = [...checklists].sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora)).slice(0, 10);
+            const recentes = [...listaChecklistsCloud].sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora)).slice(0, 10);
             
             recentes.forEach(c => {
                 const dataStr = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
@@ -739,19 +768,16 @@
             });
         }
 
-        // Função para baixar relatório em CSV (Excel)
-        function downloadReport() {
-            const checklists = getChecklists();
-            if(checklists.length === 0) {
+        window.downloadReport = function() {
+            if(listaChecklistsCloud.length === 0) {
                 showMessage("Aviso", "Não há checklists para exportar.");
                 return;
             }
 
-            // Cria o cabeçalho do CSV
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // uFEFF garante compatibilidade de acentos no Excel
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
             csvContent += "Data/Hora;Motorista;Placa;KM Informado;Status Geral;Observacoes Gerais\n";
 
-            checklists.forEach(c => {
+            listaChecklistsCloud.forEach(c => {
                 const data = new Date(c.dataHora).toLocaleString('pt-BR');
                 const obs = (c.observacoesGerais || "").replace(/;/g, ",").replace(/\n/g, " ");
                 const status = c.temAvaria ? "Com Avarias" : "OK";
@@ -765,9 +791,9 @@
             link.setAttribute("download", "relatorio_checklists_frota.csv");
             document.body.appendChild(link);
             
-            link.click(); // Dispara o download
+            link.click();
             document.body.removeChild(link);
-        }
+        };
 
         function verificarQRCodeURL() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -785,12 +811,11 @@
             }
         }
 
-        // Boot
+        // Boot da Aplicação
         window.addEventListener('DOMContentLoaded', () => {
             renderChecklistForm();
             verificarQRCodeURL();
         });
-
     </script>
 </body>
 </html>
