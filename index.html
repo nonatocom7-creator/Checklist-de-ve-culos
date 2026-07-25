@@ -683,8 +683,8 @@
             document.getElementById('history-table-body').innerHTML = html || `<tr><td colspan="6" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum checklist encontrado.</td></tr>`;
         }
 
-        function downloadCSV(tipo) { alert("Funcionalidade de Exportar CSV Ativada! (Requer biblioteca instalada no servidor final, vide código base para JS plain-text)."); }
-        function baixarPDF(tipo) { alert("Funcionalidade de PDF Ativada! Baseia-se no jsPDF."); }
+        function downloadCSV(tipo) { showMessage("Aviso", "Funcionalidade de Exportar CSV Ativada! (Requer biblioteca instalada no servidor final, vide código base para JS plain-text)."); }
+        function baixarPDF(tipo) { showMessage("Aviso", "Funcionalidade de PDF Ativada! Baseia-se no jsPDF."); }
 
         function verificarQRCodeURL() {
             const p = new URLSearchParams(window.location.search).get('placa');
