@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sistema Frota Leve - Cloud</title>
+    <title>Sistema Frota Leve - Integrado ao Sheets</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js para o Dashboard -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- QRCode.js para gerar os códigos -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- jsPDF para exportar relatórios em PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     
     <style>
         :root {
@@ -24,7 +27,7 @@
             background-color: var(--bg);
             margin: 0;
             color: #333;
-            overflow-y: scroll; /* Mantém a barra lateral fixa para a tela não pular */
+            overflow-y: scroll;
         }
         .tab-btn {
             padding: 10px 15px;
@@ -109,18 +112,32 @@
             background: white; padding: 25px; border-radius: 8px;
             max-width: 400px; width: 100%; text-align: center;
         }
+
+        /* Estilos específicos para Impressão */
+        @media print {
+            body { background-color: white; overflow-y: visible; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            
+            /* Oculta todas as sessões e mostra apenas a que está ativa na tela */
+            .view-section { display: none !important; }
+            .view-section.active { display: block !important; padding: 0; margin: 0; }
+            
+            .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 12px; }
+        }
     </style>
 </head>
 <body>
 
-    <!-- Header / Nav -->
-    <div class="bg-white shadow-md sticky top-0 z-40">
+    <!-- Header / Nav (Ficará oculto no modo Motorista QR Code) -->
+    <div id="nav-header" class="bg-white shadow-md sticky top-0 z-40 no-print">
         <div class="max-w-4xl mx-auto flex overflow-x-auto flex-nowrap shrink-0">
             <div class="tab-btn active whitespace-nowrap" onclick="switchTab('view-checklist', this)">📝 Novo Checklist</div>
-            <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-login', this)" id="tab-login">🔒 Login Admin</div>
-            <div class="tab-btn whitespace-nowrap hidden admin-only" onclick="switchTab('view-dashboard', this)">📊 Dashboard</div>
-            <div class="tab-btn whitespace-nowrap hidden admin-only" onclick="switchTab('view-vehicles', this)">🚗 Veículos & Alertas</div>
-            <div class="tab-btn whitespace-nowrap hidden admin-only text-red-500" onclick="logout()">Sair</div>
+            <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-dashboard', this)">📊 Dashboard</div>
+            <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-history', this)">📋 Histórico</div>
+            <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-vehicles', this)">🚗 Veículos & Alertas</div>
         </div>
     </div>
 
@@ -130,7 +147,7 @@
         <!-- VIEW: DRIVER CHECKLIST FORM             -->
         <!-- ======================================= -->
         <div id="view-checklist" class="view-section active">
-            <h2 class="text-2xl font-bold text-center text-blue-800 mb-6">Realizar Checklist</h2>
+            <h2 class="text-2xl font-bold text-center text-blue-800 mb-6 no-print">Realizar Checklist</h2>
             
             <form id="checklistForm">
                 <div class="card">
@@ -142,7 +159,7 @@
                         <div>
                             <label class="block font-bold mb-2">Placa do Veículo:</label>
                             <input type="text" id="placa" name="placa" required placeholder="Ex: ABC-1234" class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold">
-                            <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou use o QR Code.</p>
+                            <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou acesse via QR Code.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block font-bold mb-2">Hodômetro Atual (Km):</label>
@@ -153,7 +170,7 @@
 
                 <div id="checklistContainer"></div>
 
-                <div class="card">
+                <div class="card no-print">
                     <label class="block font-bold mb-2">Observações Gerais (Opcional):</label>
                     <textarea id="observacoes" name="observacoes" placeholder="Descreva problemas gerais, se houver..." class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none" rows="3"></textarea>
 
@@ -161,42 +178,15 @@
                     <input type="file" id="foto" name="foto" accept="image/*" capture="environment" class="w-full p-2 border rounded bg-gray-50">
                 </div>
 
-                <button type="submit" class="btn-submit" id="btnSalvar">Salvar Checklist</button>
+                <button type="submit" class="btn-submit no-print" id="btnSalvar">Salvar Checklist</button>
             </form>
-        </div>
-
-        <!-- ======================================= -->
-        <!-- VIEW: ADMIN LOGIN                       -->
-        <!-- ======================================= -->
-        <div id="view-login" class="view-section">
-            <div class="card max-w-md mx-auto mt-10">
-                <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Acesso Administrativo</h2>
-                <p class="text-sm text-gray-500 text-center mb-4">Demo: admin@admin.com / admin123</p>
-                <form id="loginForm">
-                    <div class="mb-4">
-                        <label class="block font-bold mb-2">Email:</label>
-                        <input type="email" id="loginEmail" required class="w-full p-3 border rounded" value="admin@admin.com">
-                    </div>
-                    <div class="mb-6">
-                        <label class="block font-bold mb-2">Senha:</label>
-                        <input type="password" id="loginPassword" required class="w-full p-3 border rounded" value="admin123">
-                    </div>
-                    <button type="submit" class="btn-submit">Entrar</button>
-                </form>
-            </div>
         </div>
 
         <!-- ======================================= -->
         <!-- VIEW: ADMIN DASHBOARD                   -->
         <!-- ======================================= -->
         <div id="view-dashboard" class="view-section">
-            <div class="flex flex-col md:flex-row justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Dashboard</h2>
-                <button onclick="downloadReport()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    Baixar Relatório (CSV)
-                </button>
-            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Dashboard Geral</h2>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="card bg-blue-50 border-l-4 border-blue-500">
@@ -213,31 +203,59 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="card flex flex-col">
-                    <h3 class="font-bold text-gray-700 mb-4 text-center">Índice de Conformidade (Itens)</h3>
-                    <!-- Adicionado div com altura fixa h-64 para evitar que a tela pisque/cresça infinitamente -->
-                    <div class="relative w-full h-64 flex-grow">
-                        <canvas id="conformityChart"></canvas>
-                    </div>
+            <div class="card flex flex-col">
+                <h3 class="font-bold text-gray-700 mb-4 text-center">Índice de Conformidade (Itens)</h3>
+                <div class="relative w-full h-64 flex-grow">
+                    <canvas id="conformityChart"></canvas>
                 </div>
-                <div class="card overflow-auto max-h-96">
-                    <h3 class="font-bold text-gray-700 mb-4">Últimos Checklists</h3>
-                    <table class="min-w-full text-sm text-left">
-                        <thead class="bg-gray-100 text-gray-600">
-                            <tr>
-                                <th class="p-2">Data</th>
-                                <th class="p-2">Placa</th>
-                                <th class="p-2">Motorista</th>
-                                <th class="p-2">KM</th>
-                                <th class="p-2">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="recent-checklists-body">
-                            <!-- Injetado via JS -->
-                        </tbody>
-                    </table>
+            </div>
+        </div>
+
+        <!-- ======================================= -->
+        <!-- VIEW: HISTÓRICO DE CHECKLISTS           -->
+        <!-- ======================================= -->
+        <div id="view-history" class="view-section">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 no-print gap-4">
+                <h2 class="text-2xl font-bold text-gray-800">Histórico de Checklists</h2>
+                
+                <!-- Novo: Filtro de Período -->
+                <div class="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 rounded shadow-sm border border-gray-200 w-full lg:w-auto">
+                    <span class="text-sm font-bold text-gray-600 whitespace-nowrap">Período:</span>
+                    <input type="date" id="filter-start" class="p-1.5 border rounded text-sm outline-none text-gray-700 w-full sm:w-auto" onchange="renderHistory()">
+                    <span class="text-gray-400 hidden sm:inline">até</span>
+                    <input type="date" id="filter-end" class="p-1.5 border rounded text-sm outline-none text-gray-700 w-full sm:w-auto" onchange="renderHistory()">
+                    <button onclick="clearHistoryFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm font-bold w-full sm:w-auto mt-2 sm:mt-0 transition">Limpar</button>
                 </div>
+
+                <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                    <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Baixar PDF
+                    </button>
+                    <button onclick="downloadCSV('history')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Exportar CSV
+                    </button>
+                </div>
+            </div>
+            
+            <div class="card overflow-x-auto print-block">
+                <h3 class="font-bold text-lg mb-4 hidden print-only">Relatório de Histórico de Checklists</h3>
+                <table class="min-w-full text-sm text-left">
+                    <thead class="bg-gray-100 text-gray-600 border-b">
+                        <tr>
+                            <th class="p-3">Data/Hora</th>
+                            <th class="p-3">Placa</th>
+                            <th class="p-3">Motorista</th>
+                            <th class="p-3">KM</th>
+                            <th class="p-3">Status</th>
+                            <th class="p-3">Observações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body" class="divide-y">
+                        <!-- Injetado via JS -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -245,9 +263,21 @@
         <!-- VIEW: VEHICLES & ALERTS                 -->
         <!-- ======================================= -->
         <div id="view-vehicles" class="view-section">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Gestão de Veículos e Alertas</h2>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 no-print gap-4">
+                <h2 class="text-2xl font-bold text-gray-800">Veículos e Alertas</h2>
+                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button onclick="baixarPDF('vehicles')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Baixar PDF
+                    </button>
+                    <button onclick="downloadCSV('vehicles')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Exportar CSV
+                    </button>
+                </div>
+            </div>
             
-            <div class="card bg-gray-50">
+            <div class="card bg-gray-50 no-print">
                 <h3 class="font-bold mb-4">Cadastrar Novo Veículo</h3>
                 <form id="vehicleForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
@@ -286,7 +316,8 @@
                 </form>
             </div>
 
-            <div class="card overflow-x-auto">
+            <div class="card overflow-x-auto print-block">
+                <h3 class="font-bold text-lg mb-4 hidden print-only">Relatório de Frota e Status de Manutenção</h3>
                 <table class="min-w-full text-sm text-left">
                     <thead class="bg-gray-100 text-gray-600 border-b">
                         <tr>
@@ -294,8 +325,7 @@
                             <th class="p-3">KM Atual</th>
                             <th class="p-3">Próximos (KM)</th>
                             <th class="p-3">Status</th>
-                            <th class="p-3 text-center">Alerta</th>
-                            <th class="p-3 text-center">Ações</th>
+                            <th class="p-3 text-center no-print">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="vehicles-table-body" class="divide-y">
@@ -312,7 +342,7 @@
     <!-- ======================================= -->
     
     <!-- Modal QR Code -->
-    <div id="qrModal" class="modal-overlay">
+    <div id="qrModal" class="modal-overlay no-print">
         <div class="modal-content">
             <h2 class="text-xl font-bold mb-2 text-blue-800">QR Code do Veículo</h2>
             <p id="qrPlacaText" class="font-bold text-lg mb-4 text-gray-600"></p>
@@ -323,7 +353,7 @@
     </div>
 
     <!-- Modal Mensagem Genérica -->
-    <div id="messageModal" class="modal-overlay">
+    <div id="messageModal" class="modal-overlay no-print">
         <div class="modal-content">
             <h2 id="msgTitle" class="text-xl font-bold mb-4"></h2>
             <p id="msgText" class="mb-6 text-gray-700"></p>
@@ -331,80 +361,43 @@
         </div>
     </div>
 
+    <!-- Modal Confirmação -->
+    <div id="confirmModal" class="modal-overlay no-print">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4 text-red-600">Atenção!</h2>
+            <p id="confirmText" class="mb-6 text-gray-700">Tem certeza que deseja executar esta ação?</p>
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                <button id="btnConfirmYes" class="bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-700">Sim, Confirmar</button>
+                <button onclick="closeModal('confirmModal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded font-bold hover:bg-gray-400">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ======================================= -->
-    <!-- JAVASCRIPT LOGIC (FIREBASE CLOUD MODULE)-->
+    <!-- JAVASCRIPT LOGIC (LOCAL & GOOGLE SHEETS)-->
     <!-- ======================================= -->
-    <script type="module">
-        // Importando bibliotecas do Firebase via CDN
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <script>
+        
+        // --- CONFIGURAÇÃO GOOGLE SHEETS / APPSHEET ---
+        // URL do seu Web App (Google Apps Script) configurada:
+        const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzL9KIf4yQoBhc2nyXimWIjDY8kqpLhdk-PXVg7QtmBpE6-TGs5XuR-lwEaXK3TBVSYag/exec";
 
-        // Suas configurações oficiais do Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyDZWxIZgI6qFwi2bJ7k_gUTgF7UVwni-pU",
-            authDomain: "adad-f20c4.firebaseapp.com",
-            projectId: "adad-f20c4",
-            storageBucket: "adad-f20c4.firebasestorage.app",
-            messagingSenderId: "151878623734",
-            appId: "1:151878623734:web:8b8524b3f95a8cbc13a7d7",
-            measurementId: "G-RD6NNKFTLT"
-        };
-
-        // Inicialização do Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-
-        // Realiza o login anônimo automático para ter permissão de gravar no banco
-        signInAnonymously(auth).then(() => {
-            console.log("Firebase Conectado com Sucesso!");
-        }).catch((error) => {
-            console.error("Erro na autenticação:", error);
-        });
-
-        // Estado da aplicação (Variáveis que recebem dados da Nuvem)
-        let isAdmin = false;
+        // Estado da aplicação (Salvando no LocalStorage para testes e uso offline temporário)
         let conformityChartInstance = null;
-        let listaChecklistsCloud = [];
-        let listaVeiculosCloud = [];
+        let listaChecklists = JSON.parse(localStorage.getItem('frota_checklists')) || [];
+        let listaVeiculos = JSON.parse(localStorage.getItem('frota_veiculos')) || [];
+        let vehicleToDeleteId = null; 
         
         // Definição do Checklist
         const categoriasChecklist = [
-            {
-                titulo: "Caçamba e Amarração",
-                itens: ["Fechadura da tampa traseira", "Condições gerais da caçamba"]
-            },
-            {
-                titulo: "Pneus e Emergência",
-                itens: ["Estado dos 4 pneus (calibragem/desgaste)", "Estepe, macaco e chave de roda"]
-            },
-            {
-                titulo: "Motor e Fluidos",
-                itens: ["Nível do óleo do motor", "Água do radiador e limpador"]
-            },
-            {
-                titulo: "Elétrica e Estrutura",
-                itens: ["Faróis, setas e luz de freio", "Lataria, para-brisa e retrovisores", "Documento e Cartão Combustível"]
-            }
+            { titulo: "Caçamba e Amarração", itens: ["Fechadura da tampa traseira", "Condições gerais da caçamba"] },
+            { titulo: "Pneus e Emergência", itens: ["Estado dos 4 pneus (calibragem/desgaste)", "Estepe, macaco e chave de roda"] },
+            { titulo: "Motor e Fluidos", itens: ["Nível do óleo do motor", "Água do radiador e limpador"] },
+            { titulo: "Elétrica e Estrutura", itens: ["Faróis, setas e luz de freio", "Lataria, para-brisa e retrovisores", "Documento e Cartão Combustível"] }
         ];
 
-        // Escutadores em Tempo Real (Atualizam as listas assim que algo muda no banco)
-        onSnapshot(collection(db, "checklists"), (snapshot) => {
-            listaChecklistsCloud = snapshot.docs.map(doc => ({ id_doc: doc.id, ...doc.data() }));
-            if(isAdmin) renderDashboard();
-        });
-
-        onSnapshot(collection(db, "vehicles"), (snapshot) => {
-            listaVeiculosCloud = snapshot.docs.map(doc => ({ id_doc: doc.id, ...doc.data() }));
-            if(isAdmin) {
-                renderVehicles();
-                renderDashboard();
-            }
-        });
-
-        // Expondo funções para o HTML acessar (necessário porque script é do tipo module)
-        window.switchTab = function(tabId, btnElement) {
+        // Navegação de Abas
+        function switchTab(tabId, btnElement) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             
@@ -413,26 +406,18 @@
 
             if(tabId === 'view-dashboard') renderDashboard();
             if(tabId === 'view-vehicles') renderVehicles();
-        };
+            if(tabId === 'view-history') renderHistory();
+        }
 
-        window.closeModal = function(id) {
-            document.getElementById(id).style.display = 'none';
-        };
-
+        // Modais
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showMessage(title, text) {
             document.getElementById('msgTitle').innerText = title;
             document.getElementById('msgText').innerText = text;
             document.getElementById('messageModal').style.display = 'flex';
         }
 
-        window.logout = function() {
-            isAdmin = false;
-            document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-            document.getElementById('tab-login').classList.remove('hidden');
-            window.switchTab('view-checklist', document.querySelector('[onclick="switchTab(\'view-checklist\', this)"]'));
-        };
-
-        // Renderiza o Formulário
+        // Renderiza o Formulário Dinâmico
         function renderChecklistForm() {
             const container = document.getElementById('checklistContainer');
             container.innerHTML = '';
@@ -457,7 +442,7 @@
                                     <div class="btn-radio">Avaria</div>
                                 </label>
                             </div>
-                            <input type="text" name="${obsName}" placeholder="Observações sobre este item (opcional)" class="w-full mt-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-300 outline-none">
+                            <input type="text" name="${obsName}" placeholder="Observações (opcional)" class="w-full mt-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-300 outline-none">
                         </div>`;
                 });
                 htmlDiv += `</div>`;
@@ -465,34 +450,14 @@
             });
         }
 
-        // Lógica de Login
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const email = document.getElementById('loginEmail').value;
-            const pass = document.getElementById('loginPassword').value;
-            
-            if(email === 'admin@admin.com' && pass === 'admin123') {
-                isAdmin = true;
-                document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-                document.getElementById('tab-login').classList.add('hidden');
-                window.switchTab('view-dashboard', document.querySelector('[onclick="switchTab(\'view-dashboard\', this)"]'));
-                showMessage("Sucesso", "Acesso Administrativo Liberado!");
-            } else {
-                showMessage("Erro", "Credenciais inválidas.");
-            }
-        });
-
-        // Cadastro de Veículo (Gravando no Firestore)
-        document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
+        // Cadastro de Veículo (Local Storage)
+        document.getElementById('vehicleForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const btn = document.getElementById('btnSalvarVeiculo');
-            btn.innerText = "Salvando..."; btn.disabled = true;
 
             const novaPlaca = document.getElementById('v-placa').value.toUpperCase();
-            
-            if(listaVeiculosCloud.some(v => v.placa === novaPlaca)) {
+            if(listaVeiculos.some(v => v.placa === novaPlaca)) {
                 showMessage("Erro", "Veículo com esta placa já cadastrado!");
-                btn.innerText = "Salvar Veículo"; btn.disabled = false;
                 return;
             }
 
@@ -500,6 +465,7 @@
             const kmOleoUltima = parseInt(document.getElementById('v-km-oleo-ultima').value);
 
             const newVehicle = {
+                id_doc: 'VEIC_' + Date.now(),
                 placa: novaPlaca,
                 modelo: document.getElementById('v-modelo').value,
                 kmUltimaManutencao: kmUltima,
@@ -511,15 +477,13 @@
                 dataCadastro: new Date().toISOString()
             };
 
-            try {
-                await addDoc(collection(db, "vehicles"), newVehicle);
-                this.reset();
-                showMessage("Sucesso", "Veículo cadastrado na nuvem!");
-            } catch (error) {
-                showMessage("Erro", "Falha ao salvar veículo. Verifique a conexão.");
-                console.error(error);
-            }
-            btn.innerText = "Salvar Veículo"; btn.disabled = false;
+            listaVeiculos.push(newVehicle);
+            localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
+            
+            this.reset();
+            renderVehicles();
+            renderDashboard();
+            showMessage("Sucesso", "Veículo cadastrado com sucesso!");
         });
 
         // Renderiza lista de Veículos
@@ -527,7 +491,7 @@
             const tbody = document.getElementById('vehicles-table-body');
             tbody.innerHTML = '';
 
-            listaVeiculosCloud.forEach(v => {
+            listaVeiculos.forEach(v => {
                 const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
                 const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
                 
@@ -539,9 +503,9 @@
                 let precisaAlerta = (kmFaltanteRev <= 1000) || (kmFaltanteOleo <= 1000);
                 
                 const getStatusBadge = (label, faltante) => {
-                    if (faltante <= 0) return `<div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${label}: Atrasado!</div>`;
-                    if (faltante <= 1000) return `<div class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${label}: em ${faltante}km</div>`;
-                    return `<div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${label}: faltam ${faltante}km</div>`;
+                    if (faltante <= 0) return `<div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-red-200">${label}: Atrasado!</div>`;
+                    if (faltante <= 1000) return `<div class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-yellow-200">${label}: em ${faltante}km</div>`;
+                    return `<div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-green-200">${label}: faltam ${faltante}km</div>`;
                 };
 
                 const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo);
@@ -557,10 +521,11 @@
                         <td class="p-3 font-medium">${v.kmAtual || 0}</td>
                         <td class="p-3 text-xs text-gray-600">Rev: ${kmProxRev}<br>Óleo: ${kmProxOleo}</td>
                         <td class="p-3 flex flex-col justify-center">${statusHtml}</td>
-                        <td class="p-3 text-center">${emailBtn}</td>
-                        <td class="p-3 text-center whitespace-nowrap">
-                            <button onclick="confirmarManutencao('${v.id_doc}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão Geral">
-                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <td class="p-3 text-center no-print whitespace-nowrap">
+                            ${emailBtn}
+                            <span class="mx-2 text-gray-300">|</span>
+                            <button onclick="confirmarManutencao('${v.id_doc}', 'revisao')" class="text-gray-600 hover:text-gray-900 mr-2" title="Confirmar Revisão">
+                                <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
                             </button>
                             <button onclick="confirmarManutencao('${v.id_doc}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2.25c-2.485 5.5-5.25 8.75-5.25 12.75a5.25 5.25 0 0010.5 0c0-4-2.765-7.25-5.25-12.75z"></path></svg>
@@ -578,75 +543,66 @@
             });
         }
 
-        window.confirmarManutencao = async function(docId, tipo) {
-            const veiculo = listaVeiculosCloud.find(v => v.id_doc === docId);
-            if(veiculo) {
-                const docRef = doc(db, "vehicles", docId);
-                try {
-                    if(tipo === 'revisao') {
-                        const novoKmManutencao = veiculo.kmAtual || veiculo.kmUltimaManutencao;
-                        await updateDoc(docRef, { kmUltimaManutencao: novoKmManutencao });
-                        showMessage("Revisão Registrada", `Ciclo de REVISÃO atualizado para KM ${novoKmManutencao}.`);
-                    } else if(tipo === 'oleo') {
-                        const novoKmOleo = veiculo.kmAtual || veiculo.kmUltimaTrocaOleo || veiculo.kmUltimaManutencao;
-                        await updateDoc(docRef, { kmUltimaTrocaOleo: novoKmOleo });
-                        showMessage("Troca de Óleo Registrada", `Ciclo de ÓLEO atualizado para KM ${novoKmOleo}.`);
-                    }
-                } catch(error) {
-                    showMessage("Erro", "Não foi possível atualizar a manutenção no banco de dados.");
-                    console.error(error);
+        function confirmarManutencao(docId, tipo) {
+            const vIndex = listaVeiculos.findIndex(v => v.id_doc === docId);
+            if(vIndex > -1) {
+                if(tipo === 'revisao') {
+                    listaVeiculos[vIndex].kmUltimaManutencao = listaVeiculos[vIndex].kmAtual;
+                    showMessage("Revisão Registrada", `Ciclo de REVISÃO atualizado.`);
+                } else if(tipo === 'oleo') {
+                    listaVeiculos[vIndex].kmUltimaTrocaOleo = listaVeiculos[vIndex].kmAtual;
+                    showMessage("Troca de Óleo Registrada", `Ciclo de ÓLEO atualizado.`);
                 }
+                localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
+                renderVehicles();
             }
-        };
+        }
 
-        window.dispararEmail = function(email, placa, kmAtual, kmProxRev, kmProxOleo) {
+        function dispararEmail(email, placa, kmAtual, kmProxRev, kmProxOleo) {
             const subject = encodeURIComponent(`Alerta de Manutencao/Oleo - Veiculo ${placa}`);
             const body = encodeURIComponent(`Olá equipe,\n\nO veículo de placa ${placa} possui serviços próximos ou em atraso.\n\nKM Atual: ${kmAtual}\n\nPróxima Revisão: ${kmProxRev} km\nPróxima Troca de Óleo: ${kmProxOleo} km\n\nPor favor, verifique a necessidade de agendamento.\n\nSistema Frota Leve`);
             window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-        };
+        }
 
-        window.deleteVehicle = async function(docId) {
-            if(confirm("Tem certeza que deseja excluir este veículo?")) {
-                try {
-                    await deleteDoc(doc(db, "vehicles", docId));
-                    showMessage("Sucesso", "Veículo removido da nuvem.");
-                } catch(error) {
-                    showMessage("Erro", "Falha ao remover veículo.");
-                }
+        function deleteVehicle(docId) {
+            vehicleToDeleteId = docId;
+            document.getElementById('confirmText').innerText = "Tem certeza que deseja excluir este veículo de forma definitiva?";
+            document.getElementById('confirmModal').style.display = 'flex';
+        }
+
+        document.getElementById('btnConfirmYes').addEventListener('click', () => {
+            if (vehicleToDeleteId) {
+                listaVeiculos = listaVeiculos.filter(v => v.id_doc !== vehicleToDeleteId);
+                localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
+                renderVehicles();
+                renderDashboard();
+                showMessage("Sucesso", "Veículo removido.");
+                closeModal('confirmModal');
+                vehicleToDeleteId = null;
             }
-        };
+        });
 
-        window.generateQR = function(placa) {
+        function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex';
             document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
-            
             const qrContainer = document.getElementById('qrcode');
             qrContainer.innerHTML = ''; 
-            
-            const baseUrl = window.location.href.split('?')[0];
-            const finalUrl = `${baseUrl}?placa=${placa}`;
-            
-            new QRCode(qrContainer, {
-                text: finalUrl,
-                width: 180,
-                height: 180,
-                colorDark : "#0056b3",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H
-            });
-        };
+            const finalUrl = `${window.location.href.split('?')[0]}?placa=${placa}`;
+            new QRCode(qrContainer, { text: finalUrl, width: 180, height: 180, colorDark : "#0056b3", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
+        }
 
-        // Salvar Checklist no Firestore
+        // Salvar Checklist
         document.getElementById('checklistForm').addEventListener('submit', async function(e) {
             e.preventDefault(); 
             const btn = document.getElementById('btnSalvar');
-            btn.innerText = "Enviando para nuvem..."; btn.disabled = true;
+            btn.innerText = "Processando..."; btn.disabled = true;
 
             const formData = new FormData(this);
             const kmInformado = parseInt(formData.get('km'));
             const placaInformada = formData.get('placa').toUpperCase();
             
             const novoChecklist = {
+                id_doc: 'CHK_' + Date.now(),
                 dataHora: new Date().toISOString(),
                 motorista: formData.get('motorista'),
                 placa: placaInformada,
@@ -657,149 +613,270 @@
             };
 
             let avariasCount = 0;
-
             for (let [key, value] of formData.entries()) {
                 if (key.startsWith('item_')) {
-                    const labelKey = 'label_' + key;
-                    const obsKey = 'obs_' + key; 
-                    const label = formData.get(labelKey);
-                    const obs = formData.get(obsKey) || "";
-                    
+                    const label = formData.get('label_' + key);
+                    const obs = formData.get('obs_' + key) || "";
                     novoChecklist.itens.push({ id: key, nome: label, status: value, observacao: obs });
                     if(value === "Nao Conforme") avariasCount++;
                 }
             }
-            
             novoChecklist.temAvaria = avariasCount > 0;
 
-            try {
-                // 1. Grava o checklist
-                await addDoc(collection(db, "checklists"), novoChecklist);
-                
-                // 2. Atualiza o KM do Veículo correspondente (se existir)
-                const veiculoRef = listaVeiculosCloud.find(v => v.placa === placaInformada);
-                if(veiculoRef && kmInformado > (veiculoRef.kmAtual || 0)) {
-                    await updateDoc(doc(db, "vehicles", veiculoRef.id_doc), { kmAtual: kmInformado });
+            // INTEGRAÇÃO GOOGLE SHEETS / APPSHEET (Exemplo de envio via POST)
+            if(GOOGLE_SHEETS_WEBHOOK_URL) {
+                try {
+                    await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Dependendo da config do seu Web App
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(novoChecklist)
+                    });
+                    console.log("Enviado ao Sheets via Webhook");
+                } catch(e) {
+                    console.error("Erro ao enviar para Google Sheets:", e);
                 }
-
-                showMessage("Checklist Salvo!", "Enviado para a nuvem com sucesso!");
-                this.reset();
-                window.scrollTo(0,0);
-                verificarQRCodeURL();
-            } catch(error) {
-                showMessage("Erro", "Ocorreu um erro de conexão ao salvar na nuvem.");
-                console.error(error);
             }
+
+            // Salva Localmente para UI
+            listaChecklists.push(novoChecklist);
+            localStorage.setItem('frota_checklists', JSON.stringify(listaChecklists));
+            
+            // Atualiza KM do Veículo
+            const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
+            if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
+                listaVeiculos[vIndex].kmAtual = kmInformado;
+                localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
+                renderVehicles();
+            }
+
+            showMessage("Checklist Salvo!", "Os dados foram registrados com sucesso!");
+            this.reset();
+            window.scrollTo(0,0);
+            verificarQRCodeURL();
+            renderDashboard();
+            renderHistory();
 
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
 
-        // Dashboard e Relatórios
         function renderDashboard() {
-            document.getElementById('dash-total-checklists').innerText = listaChecklistsCloud.length;
-            document.getElementById('dash-total-vehicles').innerText = listaVeiculosCloud.length;
+            document.getElementById('dash-total-checklists').innerText = listaChecklists.length;
+            document.getElementById('dash-total-vehicles').innerText = listaVeiculos.length;
             
             let alertas = 0;
-            listaVeiculosCloud.forEach(v => {
+            listaVeiculos.forEach(v => {
                 const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
-                const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
-                
-                const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? v.kmUltimaTrocaOleo : (v.kmUltimaManutencao || 0);
-                const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? v.kmIntervaloOleo : 10000;
-                const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
-                const kmFaltanteOleo = kmProxOleo - (v.kmAtual || kmOleoUltima);
-
-                if (kmFaltanteRev <= 1000 || kmFaltanteOleo <= 1000) alertas++;
+                const kmProxOleo = (v.kmUltimaTrocaOleo || v.kmUltimaManutencao || 0) + (v.kmIntervaloOleo || 10000);
+                if ((kmProxRev - (v.kmAtual || 0)) <= 1000 || (kmProxOleo - (v.kmAtual || 0)) <= 1000) alertas++;
             });
             document.getElementById('dash-total-alerts').innerText = alertas;
 
             // Gráfico
-            let totalConformes = 0;
-            let totalAvarias = 0;
-            
-            listaChecklistsCloud.forEach(c => {
-                c.itens.forEach(i => {
-                    if(i.status === 'Conforme') totalConformes++;
-                    if(i.status === 'Nao Conforme') totalAvarias++;
-                });
-            });
+            let totalConformes = 0; let totalAvarias = 0;
+            listaChecklists.forEach(c => c.itens.forEach(i => {
+                if(i.status === 'Conforme') totalConformes++;
+                if(i.status === 'Nao Conforme') totalAvarias++;
+            }));
 
             const ctx = document.getElementById('conformityChart').getContext('2d');
             if(conformityChartInstance) conformityChartInstance.destroy();
-
             conformityChartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: ['Conforme (OK)', 'Não Conforme (Avaria)'],
-                    datasets: [{
-                        data: [totalConformes, totalAvarias],
-                        backgroundColor: ['#28a745', '#dc3545'],
-                        borderWidth: 0
-                    }]
+                    datasets: [{ data: [totalConformes, totalAvarias], backgroundColor: ['#28a745', '#dc3545'], borderWidth: 0 }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
+        }
 
-            // Tabela de Últimos Checklists
-            const tbody = document.getElementById('recent-checklists-body');
+        // Função de Suporte: Retorna o Histórico já Filtrado por Data e Ordenado
+        function getFilteredHistory() {
+            const startStr = document.getElementById('filter-start').value;
+            const endStr = document.getElementById('filter-end').value;
+            
+            let historico = [...listaChecklists];
+            
+            if (startStr) {
+                const startDate = new Date(startStr + "T00:00:00");
+                historico = historico.filter(c => new Date(c.dataHora) >= startDate);
+            }
+            if (endStr) {
+                const endDate = new Date(endStr + "T23:59:59");
+                historico = historico.filter(c => new Date(c.dataHora) <= endDate);
+            }
+            
+            return historico.sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora));
+        }
+
+        function clearHistoryFilter() {
+            document.getElementById('filter-start').value = '';
+            document.getElementById('filter-end').value = '';
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-table-body');
             tbody.innerHTML = '';
             
-            const recentes = [...listaChecklistsCloud].sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora)).slice(0, 10);
+            // Obtém dados usando a função de filtro
+            const historico = getFilteredHistory();
             
-            recentes.forEach(c => {
+            if(historico.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum checklist encontrado para este período.</td></tr>`;
+                return;
+            }
+            
+            historico.forEach(c => {
                 const dataStr = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
                 const statusBadge = c.temAvaria 
-                    ? '<span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold">C/ Avarias</span>'
-                    : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold">100% OK</span>';
+                    ? '<span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold border border-red-200">Avarias Registradas</span>'
+                    : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold border border-green-200">100% OK</span>';
                 
                 tbody.innerHTML += `
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="p-2 text-xs">${dataStr}</td>
-                        <td class="p-2 font-bold uppercase">${c.placa}</td>
-                        <td class="p-2 capitalize">${c.motorista.split(' ')[0]}</td>
-                        <td class="p-2 text-gray-500">${c.km}km</td>
-                        <td class="p-2">${statusBadge}</td>
+                    <tr class="hover:bg-gray-50 border-b">
+                        <td class="p-3 text-xs whitespace-nowrap">${dataStr}</td>
+                        <td class="p-3 font-bold uppercase">${c.placa}</td>
+                        <td class="p-3 capitalize">${c.motorista}</td>
+                        <td class="p-3 text-gray-600">${c.km}km</td>
+                        <td class="p-3">${statusBadge}</td>
+                        <td class="p-3 text-xs text-gray-500 max-w-xs truncate" title="${c.observacoesGerais}">${c.observacoesGerais || '-'}</td>
                     </tr>
                 `;
             });
         }
 
-        window.downloadReport = function() {
-            if(listaChecklistsCloud.length === 0) {
-                showMessage("Aviso", "Não há checklists para exportar.");
-                return;
-            }
-
+        function downloadCSV(tipo) {
             let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
-            csvContent += "Data/Hora;Motorista;Placa;KM Informado;Status Geral;Observacoes Gerais\n";
+            let filename = "";
 
-            listaChecklistsCloud.forEach(c => {
-                const data = new Date(c.dataHora).toLocaleString('pt-BR');
-                const obs = (c.observacoesGerais || "").replace(/;/g, ",").replace(/\n/g, " ");
-                const status = c.temAvaria ? "Com Avarias" : "OK";
-                
-                csvContent += `${data};${c.motorista};${c.placa};${c.km};${status};${obs}\n`;
-            });
+            if (tipo === 'history') {
+                const historico = getFilteredHistory();
+                if(historico.length === 0) {
+                    showMessage("Aviso", "Não há checklists para exportar neste período.");
+                    return;
+                }
+                csvContent += "Data/Hora;Motorista;Placa;KM Informado;Status Geral;Observacoes Gerais\n";
+                historico.forEach(c => {
+                    const data = new Date(c.dataHora).toLocaleString('pt-BR');
+                    const obs = (c.observacoesGerais || "").replace(/;/g, ",").replace(/\n/g, " ");
+                    const status = c.temAvaria ? "Com Avarias" : "OK";
+                    csvContent += `${data};${c.motorista};${c.placa};${c.km};${status};${obs}\n`;
+                });
+                filename = "historico_checklists_frota.csv";
+
+            } else if (tipo === 'vehicles') {
+                if (listaVeiculos.length === 0) {
+                    showMessage("Aviso", "Não há veículos cadastrados para exportar.");
+                    return;
+                }
+                csvContent += "Placa;Modelo;KM Atual;Proxima Revisao;Proxima Troca de Oleo;Status Revisao;Status Oleo;Email Alerta\n";
+                listaVeiculos.forEach(v => {
+                    const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
+                    const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
+                    
+                    const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? v.kmUltimaTrocaOleo : (v.kmUltimaManutencao || 0);
+                    const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? v.kmIntervaloOleo : 10000;
+                    const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
+                    const kmFaltanteOleo = kmProxOleo - (v.kmAtual || kmOleoUltima);
+
+                    const statusRev = kmFaltanteRev <= 0 ? `ATRASADO (${Math.abs(kmFaltanteRev)}km)` : `Faltam ${kmFaltanteRev}km`;
+                    const statusOleo = kmFaltanteOleo <= 0 ? `ATRASADO (${Math.abs(kmFaltanteOleo)}km)` : `Faltam ${kmFaltanteOleo}km`;
+
+                    csvContent += `${v.placa};${v.modelo};${v.kmAtual || 0};${kmProxRev};${kmProxOleo};${statusRev};${statusOleo};${v.emailAlerta}\n`;
+                });
+                filename = "relatorio_veiculos_manutencao.csv";
+            }
 
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "relatorio_checklists_frota.csv");
+            link.setAttribute("download", filename);
             document.body.appendChild(link);
-            
             link.click();
             document.body.removeChild(link);
-        };
+        }
 
+        function baixarPDF(tipo) {
+            const { jsPDF } = window.jspdf;
+            
+            if (tipo === 'history') {
+                const historico = getFilteredHistory();
+                if (historico.length === 0) {
+                    showMessage("Aviso", "Não há checklists para exportar neste período.");
+                    return;
+                }
+                const doc = new jsPDF('landscape');
+                doc.text("Relatório de Histórico de Checklists - Frota Leve", 14, 15);
+                
+                const tableData = historico.map(c => {
+                    const dataStr = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                    const status = c.temAvaria ? "Com Avarias" : "100% OK";
+                    return [dataStr, c.placa.toUpperCase(), c.motorista, `${c.km} km`, status, c.observacoesGerais || '-'];
+                });
+
+                doc.autoTable({
+                    startY: 20,
+                    head: [['Data/Hora', 'Placa', 'Motorista', 'KM', 'Status', 'Observações']],
+                    body: tableData,
+                    theme: 'grid',
+                    styles: { fontSize: 9 },
+                    headStyles: { fillColor: [0, 86, 179] }
+                });
+
+                doc.save('historico_checklists_frota.pdf');
+                
+            } else if (tipo === 'vehicles') {
+                if (listaVeiculos.length === 0) {
+                    showMessage("Aviso", "Não há veículos cadastrados para exportar.");
+                    return;
+                }
+                const doc = new jsPDF('landscape');
+                doc.text("Relatório de Frota e Status de Manutenção - Frota Leve", 14, 15);
+
+                const tableData = listaVeiculos.map(v => {
+                    const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
+                    const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
+                    
+                    const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? v.kmUltimaTrocaOleo : (v.kmUltimaManutencao || 0);
+                    const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? v.kmIntervaloOleo : 10000;
+                    const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
+                    const kmFaltanteOleo = kmProxOleo - (v.kmAtual || kmOleoUltima);
+
+                    const statusRev = kmFaltanteRev <= 0 ? `ATRASADO (${Math.abs(kmFaltanteRev)}km)` : `Faltam ${kmFaltanteRev}km`;
+                    const statusOleo = kmFaltanteOleo <= 0 ? `ATRASADO (${Math.abs(kmFaltanteOleo)}km)` : `Faltam ${kmFaltanteOleo}km`;
+
+                    return [
+                        `${v.placa.toUpperCase()} / ${v.modelo}`,
+                        `${v.kmAtual || 0} km`,
+                        `Rev: ${kmProxRev} km\nÓleo: ${kmProxOleo} km`,
+                        `Rev: ${statusRev}\nÓleo: ${statusOleo}`
+                    ];
+                });
+
+                doc.autoTable({
+                    startY: 20,
+                    head: [['Placa / Modelo', 'KM Atual', 'Próximos (KM)', 'Status (Faltante / Atraso)']],
+                    body: tableData,
+                    theme: 'grid',
+                    styles: { fontSize: 10, cellPadding: 3 },
+                    headStyles: { fillColor: [0, 86, 179] }
+                });
+
+                doc.save('relatorio_veiculos_manutencao.pdf');
+            }
+        }
+
+        // Lógica de Trava pelo QR Code (Oculta Menu)
         function verificarQRCodeURL() {
             const urlParams = new URLSearchParams(window.location.search);
             const placaDaURL = urlParams.get('placa');
 
             if (placaDaURL) {
+                // Esconde a navegação superior (O motorista só vê a tela do formulário)
+                document.getElementById('nav-header').style.display = 'none';
+
                 const inputPlaca = document.getElementById('placa');
                 inputPlaca.value = placaDaURL.toUpperCase(); 
                 inputPlaca.readOnly = true; 
@@ -814,6 +891,9 @@
         // Boot da Aplicação
         window.addEventListener('DOMContentLoaded', () => {
             renderChecklistForm();
+            renderVehicles();
+            renderDashboard();
+            renderHistory();
             verificarQRCodeURL();
         });
     </script>
