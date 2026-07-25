@@ -228,8 +228,11 @@
             <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Controle de Aderência</h2>
                 <div class="flex gap-2 items-center bg-white p-2 rounded shadow-sm border text-sm no-print">
-                    <label class="font-bold text-gray-600">Data Base:</label>
-                    <input type="date" id="adherence-date" class="border rounded px-2 py-1" onchange="renderAdherence()">
+                    <label class="font-bold text-gray-600">Período:</label>
+                    <input type="date" id="adh-start" class="border rounded px-2 py-1" onchange="renderAdherence()">
+                    <span>até</span>
+                    <input type="date" id="adh-end" class="border rounded px-2 py-1" onchange="renderAdherence()">
+                    <button onclick="clearAdherenceFilter()" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded font-bold">Limpar</button>
                 </div>
             </div>
 
@@ -527,7 +530,6 @@
             { titulo: "Elétrica e Estrutura", itens: ["Faróis, setas e luz de freio", "Lataria, para-brisa e retrovisores", "Documento e Cartão Combustível"] }
         ];
 
-        
         // Navegação de Abas
         function switchTab(tabId, btnElement) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -586,7 +588,6 @@
             container.innerHTML = formHtml;
         }
 
-        
         // Cadastro de Veículo (Local Storage)
         document.getElementById('vehicleForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -639,7 +640,6 @@
             showMessage("Sucesso", "Veículo cadastrado com sucesso!");
         });
 
-        
         // Renderiza lista de Veículos
         function renderVehicles() {
             const tbody = document.getElementById('vehicles-table-body');
@@ -713,7 +713,6 @@
             tbody.innerHTML = rowsHtml;
         }
 
-        
         function confirmarManutencao(docId, tipo) {
             const vIndex = listaVeiculos.findIndex(v => v.id_doc === docId);
             if(vIndex > -1) {
@@ -783,7 +782,6 @@
             }
         });
 
-        
         function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex';
             document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
@@ -862,7 +860,6 @@
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
 
-        
         function renderDashboard() {
             // Filtro de datas do Dashboard
             const startStr = document.getElementById('dash-start') ? document.getElementById('dash-start').value : '';
@@ -907,15 +904,20 @@
             });
         }
 
+        function clearAdherenceFilter() {
+            document.getElementById('adh-start').value = '';
+            document.getElementById('adh-end').value = '';
+            renderAdherence();
+        }
+
         function renderAdherence() {
-            if (!document.getElementById('adherence-date')) return;
+            if (!document.getElementById('adh-start')) return;
             
-            // Se não tiver data selecionada, pega o dia de hoje
-            let dateStr = document.getElementById('adherence-date').value;
-            if (!dateStr) {
-                dateStr = new Date().toISOString().split('T')[0];
-                document.getElementById('adherence-date').value = dateStr;
-            }
+            let startStr = document.getElementById('adh-start').value;
+            let endStr = document.getElementById('adh-end').value;
+
+            let startDate = startStr ? new Date(startStr + "T00:00:00") : new Date("2000-01-01T00:00:00");
+            let endDate = endStr ? new Date(endStr + "T23:59:59") : new Date("2100-01-01T23:59:59");
 
             const tbody = document.getElementById('adherence-table-body');
             let rowsHtml = '';
@@ -926,29 +928,47 @@
             if (listaVeiculos.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum veículo cadastrado na frota.</td></tr>`;
                 document.getElementById('adh-done').innerText = 0;
+                document.getElementById('adh-done-pct').innerText = `(0%)`;
                 document.getElementById('adh-miss').innerText = 0;
+                document.getElementById('adh-miss-pct').innerText = `(0%)`;
                 return;
             }
 
-            // Filtra os checklists EXATAMENTE do dia selecionado
-            const targetDateStr = new Date(dateStr + "T12:00:00").toLocaleDateString('pt-BR');
-            const checklistsDoDia = listaChecklists.filter(c => {
-                return new Date(c.dataHora).toLocaleDateString('pt-BR') === targetDateStr;
+            // Filtra os checklists do período selecionado
+            const checklistsNoPeriodo = listaChecklists.filter(c => {
+                const cDate = new Date(c.dataHora);
+                return cDate >= startDate && cDate <= endDate;
             });
 
             listaVeiculos.forEach(v => {
-                // Verifica se este veículo tem algum checklist no dia
-                const fezChecklist = checklistsDoDia.filter(c => c.placa === v.placa);
+                // Inteligência: Verifica se o veículo já existia neste período
+                // (Se não houver dataCadastro no registro antigo, assume uma data velha para não quebrar)
+                const dataCadastro = v.dataCadastro ? new Date(v.dataCadastro) : new Date("2000-01-01T00:00:00");
+                
+                if (endDate < dataCadastro) {
+                    // O veículo foi cadastrado DEPOIS do período pesquisado. Ignora das métricas.
+                    rowsHtml += `
+                        <tr class="bg-gray-50 border-b opacity-60">
+                            <td class="p-3 font-bold uppercase text-gray-500">${escapeHTML(v.placa)} <br><span class="text-xs font-normal capitalize">${escapeHTML(v.modelo)}</span></td>
+                            <td class="p-3"><span class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded font-bold border border-gray-300">Não Cadastrado</span></td>
+                            <td class="p-3 text-xs text-gray-500">Veículo foi registrado no sistema apenas em ${dataCadastro.toLocaleDateString('pt-BR')}.</td>
+                        </tr>
+                    `;
+                    return; // Pula para o próximo veículo
+                }
+
+                // Verifica se este veículo tem algum checklist no período
+                const fezChecklist = checklistsNoPeriodo.filter(c => c.placa === v.placa);
                 
                 if (fezChecklist.length > 0) {
                     doneCount++;
-                    const c = fezChecklist[0]; // Pega o primeiro feito no dia
-                    const hora = new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                    const c = fezChecklist[0]; // Pega o primeiro feito no período (mais antigo do filtro)
+                    const dataFormatada = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
                     rowsHtml += `
                         <tr class="hover:bg-gray-50 border-b">
                             <td class="p-3 font-bold uppercase">${escapeHTML(v.placa)} <br><span class="text-xs font-normal text-gray-500 capitalize">${escapeHTML(v.modelo)}</span></td>
                             <td class="p-3"><span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold border border-green-200">Realizado</span></td>
-                            <td class="p-3 text-xs text-gray-600">Às ${hora} por ${escapeHTML(c.motorista)}</td>
+                            <td class="p-3 text-xs text-gray-600">Registro no período: ${dataFormatada} por ${escapeHTML(c.motorista)}</td>
                         </tr>
                     `;
                 } else {
@@ -957,7 +977,7 @@
                         <tr class="bg-red-50 hover:bg-red-100 border-b">
                             <td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)} <br><span class="text-xs font-normal text-red-600 capitalize">${escapeHTML(v.modelo)}</span></td>
                             <td class="p-3"><span class="bg-red-200 text-red-900 text-xs px-2 py-1 rounded font-bold border border-red-300">Faltante</span></td>
-                            <td class="p-3 text-xs text-red-600">Nenhum checklist registrado nesta data.</td>
+                            <td class="p-3 text-xs text-red-600">Nenhum checklist registrado neste período.</td>
                         </tr>
                     `;
                 }
@@ -965,9 +985,9 @@
 
             tbody.innerHTML = rowsHtml;
 
-            const total = listaVeiculos.length;
-            const donePct = ((doneCount / total) * 100).toFixed(1);
-            const missPct = ((missCount / total) * 100).toFixed(1);
+            const totalValidos = doneCount + missCount; // Total de veículos que já estavam cadastrados na época
+            const donePct = totalValidos > 0 ? ((doneCount / totalValidos) * 100).toFixed(1) : 0;
+            const missPct = totalValidos > 0 ? ((missCount / totalValidos) * 100).toFixed(1) : 0;
 
             document.getElementById('adh-done').innerText = doneCount;
             document.getElementById('adh-done-pct').innerText = `(${donePct}%)`;
@@ -1001,7 +1021,6 @@
             renderHistory();
         }
 
-        
         function renderHistory() {
             const tbody = document.getElementById('history-table-body');
             
@@ -1212,6 +1231,14 @@
             renderChecklistForm();
             renderVehicles();
             renderDashboard();
+
+            // Preenche com a data de hoje ao abrir o sistema para focar na aderência do dia
+            const today = new Date().toISOString().split('T')[0];
+            if (document.getElementById('adh-start')) {
+                document.getElementById('adh-start').value = today;
+                document.getElementById('adh-end').value = today;
+            }
+            
             renderAdherence();
             renderHistory();
             verificarQRCodeURL();
