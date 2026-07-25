@@ -401,6 +401,7 @@
         let listaVeiculos = JSON.parse(localStorage.getItem('frota_veiculos')) || [];
         let vehicleToDeleteId = null; 
         
+        
         // --- FUNÇÃO AUXILIAR DE ALERTAS (Revisão, Óleo, IPVA, Licenciamento) ---
         function checkVehicleAlerts(v) {
             let alerts = [];
@@ -433,6 +434,7 @@
             { titulo: "Elétrica e Estrutura", itens: ["Faróis, setas e luz de freio", "Lataria, para-brisa e retrovisores", "Documento e Cartão Combustível"] }
         ];
 
+        
         // Navegação de Abas
         function switchTab(tabId, btnElement) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -490,6 +492,7 @@
             container.innerHTML = formHtml;
         }
 
+        
         // Cadastro de Veículo (Local Storage)
         document.getElementById('vehicleForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -542,6 +545,7 @@
             showMessage("Sucesso", "Veículo cadastrado com sucesso!");
         });
 
+        
         // Renderiza lista de Veículos
         function renderVehicles() {
             const tbody = document.getElementById('vehicles-table-body');
@@ -615,6 +619,7 @@
             tbody.innerHTML = rowsHtml;
         }
 
+        
         function confirmarManutencao(docId, tipo) {
             const vIndex = listaVeiculos.findIndex(v => v.id_doc === docId);
             if(vIndex > -1) {
@@ -684,6 +689,7 @@
             }
         });
 
+        
         function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex';
             document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
@@ -762,6 +768,7 @@
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
 
+        
         function renderDashboard() {
             document.getElementById('dash-total-checklists').innerText = listaChecklists.length;
             document.getElementById('dash-total-vehicles').innerText = listaVeiculos.length;
@@ -816,6 +823,7 @@
             renderHistory();
         }
 
+        
         function renderHistory() {
             const tbody = document.getElementById('history-table-body');
             
@@ -861,6 +869,7 @@
             tbody.innerHTML = rowsHtml;
         }
 
+        
         function downloadCSV(tipo) {
             let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
             let filename = "";
@@ -999,6 +1008,7 @@
             }
         }
 
+        
         // Lógica de Trava pelo QR Code (Oculta Menu)
         function verificarQRCodeURL() {
             const urlParams = new URLSearchParams(window.location.search);
