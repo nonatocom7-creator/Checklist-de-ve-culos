@@ -159,7 +159,7 @@
                         <div>
                             <label class="block font-bold mb-2">Placa do Veículo:</label>
                             <input type="text" id="placa" name="placa" required placeholder="Ex: ABC-1234" class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold">
-                            <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou acesse via QR Code.</p>
+                            <p class="text-xs text-gray-500 mt-1" id="placa-hint">Digite a placa ou use o QR Code.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block font-bold mb-2">Hodômetro Atual (Km):</label>
@@ -170,77 +170,74 @@
 
                 <div id="checklistContainer"></div>
 
-                <div class="card no-print">
+                <div class="card">
                     <label class="block font-bold mb-2">Observações Gerais (Opcional):</label>
                     <textarea id="observacoes" name="observacoes" placeholder="Descreva problemas gerais, se houver..." class="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none" rows="3"></textarea>
-
+                    
                     <label class="block font-bold mb-2 mt-4">Evidência Fotográfica (Avarias):</label>
                     <input type="file" id="foto" name="foto" accept="image/*" capture="environment" class="w-full p-2 border rounded bg-gray-50">
                 </div>
 
-                <button type="submit" class="btn-submit no-print" id="btnSalvar">Salvar Checklist</button>
+                <button type="submit" class="btn-submit" id="btnSalvar">Salvar Checklist</button>
             </form>
         </div>
 
         <!-- ======================================= -->
-        <!-- VIEW: ADMIN DASHBOARD                   -->
+        <!-- VIEW: DASHBOARD                         -->
         <!-- ======================================= -->
         <div id="view-dashboard" class="view-section">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Dashboard Geral</h2>
-            
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Dashboard Resumo</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="card bg-blue-50 border-l-4 border-blue-500">
-                    <h3 class="text-gray-500 font-bold">Total de Checklists</h3>
+                    <h3 class="text-gray-500 font-bold">Total Checklists</h3>
                     <p class="text-3xl font-black text-blue-700" id="dash-total-checklists">0</p>
                 </div>
                 <div class="card bg-green-50 border-l-4 border-green-500">
-                    <h3 class="text-gray-500 font-bold">Veículos Cadastrados</h3>
+                    <h3 class="text-gray-500 font-bold">Veículos</h3>
                     <p class="text-3xl font-black text-green-700" id="dash-total-vehicles">0</p>
                 </div>
                 <div class="card bg-red-50 border-l-4 border-red-500">
-                    <h3 class="text-gray-500 font-bold">Manutenções Pendentes</h3>
+                    <h3 class="text-gray-500 font-bold">Alertas Pendentes</h3>
                     <p class="text-3xl font-black text-red-700" id="dash-total-alerts">0</p>
                 </div>
             </div>
-
-            <div class="card flex flex-col">
+            <div class="card">
                 <h3 class="font-bold text-gray-700 mb-4 text-center">Índice de Conformidade (Itens)</h3>
-                <div class="relative w-full h-64 flex-grow">
+                <div class="relative w-full h-64">
                     <canvas id="conformityChart"></canvas>
                 </div>
             </div>
         </div>
 
         <!-- ======================================= -->
-        <!-- VIEW: HISTÓRICO DE CHECKLISTS           -->
+        <!-- VIEW: HISTORY                           -->
         <!-- ======================================= -->
         <div id="view-history" class="view-section">
-            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 no-print gap-4">
-                <h2 class="text-2xl font-bold text-gray-800">Histórico de Checklists</h2>
-                
-                <!-- Novo: Filtro de Período -->
-                <div class="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 rounded shadow-sm border border-gray-200 w-full lg:w-auto">
-                    <span class="text-sm font-bold text-gray-600 whitespace-nowrap">Período:</span>
-                    <input type="date" id="filter-start" class="p-1.5 border rounded text-sm outline-none text-gray-700 w-full sm:w-auto" onchange="renderHistory()">
-                    <span class="text-gray-400 hidden sm:inline">até</span>
-                    <input type="date" id="filter-end" class="p-1.5 border rounded text-sm outline-none text-gray-700 w-full sm:w-auto" onchange="renderHistory()">
-                    <button onclick="clearHistoryFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm font-bold w-full sm:w-auto mt-2 sm:mt-0 transition">Limpar</button>
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                    <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        Baixar PDF
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Histórico de Checklists</h2>
+                <div class="flex flex-wrap gap-2 justify-center">
+                    <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">
+                        🖨️ Baixar PDF
                     </button>
-                    <button onclick="downloadCSV('history')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Exportar CSV
+                    <button onclick="downloadCSV('history')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">
+                        📊 Exportar CSV
                     </button>
                 </div>
             </div>
-            
+
+            <div class="card bg-gray-50 mb-4 flex flex-wrap items-end gap-4 no-print">
+                <div>
+                    <label class="block text-xs font-bold mb-1">Data Início:</label>
+                    <input type="date" id="filter-start" class="p-2 border rounded text-sm" onchange="renderHistory()">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1">Data Fim:</label>
+                    <input type="date" id="filter-end" class="p-2 border rounded text-sm" onchange="renderHistory()">
+                </div>
+                <button onclick="clearHistoryFilter()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded text-sm h-max">Limpar Filtro</button>
+            </div>
+
             <div class="card overflow-x-auto print-block">
-                <h3 class="font-bold text-lg mb-4 hidden print-only">Relatório de Histórico de Checklists</h3>
                 <table class="min-w-full text-sm text-left">
                     <thead class="bg-gray-100 text-gray-600 border-b">
                         <tr>
@@ -253,7 +250,7 @@
                         </tr>
                     </thead>
                     <tbody id="history-table-body" class="divide-y">
-                        <!-- Injetado via JS -->
+                        <!-- JS Injects -->
                     </tbody>
                 </table>
             </div>
@@ -263,16 +260,14 @@
         <!-- VIEW: VEHICLES & ALERTS                 -->
         <!-- ======================================= -->
         <div id="view-vehicles" class="view-section">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 no-print gap-4">
-                <h2 class="text-2xl font-bold text-gray-800">Veículos e Alertas</h2>
-                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <button onclick="baixarPDF('vehicles')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        Baixar PDF
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Gestão de Veículos e Alertas</h2>
+                <div class="flex gap-2">
+                    <button onclick="baixarPDF('vehicles')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">
+                        🖨️ Baixar PDF
                     </button>
-                    <button onclick="downloadCSV('vehicles')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Exportar CSV
+                    <button onclick="downloadCSV('vehicles')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">
+                        📊 Exportar CSV
                     </button>
                 </div>
             </div>
@@ -298,7 +293,7 @@
                         <input type="number" id="v-km-ultima" required placeholder="50000" class="w-full p-2 border rounded text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold mb-1">Intervalo Revisão (KM):</label>
+                        <label class="block text-xs font-bold mb-1">Intervalo Rev. (KM):</label>
                         <input type="number" id="v-km-intervalo" required placeholder="10000" class="w-full p-2 border rounded text-sm">
                     </div>
                     <div>
@@ -310,6 +305,11 @@
                         <input type="number" id="v-km-oleo-intervalo" required placeholder="10000" class="w-full p-2 border rounded text-sm">
                     </div>
 
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-bold mb-1">Data do Emplacamento (Cálculo Anual):</label>
+                        <input type="date" id="v-data-emplacamento" required title="O sistema usará o dia e mês desta data para projetar os vencimentos anuais." class="w-full p-2 border rounded text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
                     <div class="md:col-span-4 mt-2">
                         <button type="submit" class="w-full bg-green-600 text-white p-2 rounded font-bold hover:bg-green-700 h-full mt-1" id="btnSalvarVeiculo">Salvar Veículo</button>
                     </div>
@@ -317,19 +317,18 @@
             </div>
 
             <div class="card overflow-x-auto print-block">
-                <h3 class="font-bold text-lg mb-4 hidden print-only">Relatório de Frota e Status de Manutenção</h3>
                 <table class="min-w-full text-sm text-left">
                     <thead class="bg-gray-100 text-gray-600 border-b">
                         <tr>
                             <th class="p-3">Placa / Modelo</th>
                             <th class="p-3">KM Atual</th>
-                            <th class="p-3">Próximos (KM)</th>
+                            <th class="p-3">Próximos (KM/Data)</th>
                             <th class="p-3">Status</th>
                             <th class="p-3 text-center no-print">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="vehicles-table-body" class="divide-y">
-                        <!-- Injetado via JS -->
+                        <!-- JS Injects -->
                     </tbody>
                 </table>
             </div>
@@ -378,6 +377,20 @@
     <!-- ======================================= -->
     <script>
         
+        // --- FUNÇÃO AUXILIAR DE SEGURANÇA (Prevenção de injeção de código) ---
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return str.toString().replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
         // --- CONFIGURAÇÃO GOOGLE SHEETS / APPSHEET ---
         // URL do seu Web App (Google Apps Script) configurada:
         const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzL9KIf4yQoBhc2nyXimWIjDY8kqpLhdk-PXVg7QtmBpE6-TGs5XuR-lwEaXK3TBVSYag/exec";
@@ -388,6 +401,30 @@
         let listaVeiculos = JSON.parse(localStorage.getItem('frota_veiculos')) || [];
         let vehicleToDeleteId = null; 
         
+        // --- FUNÇÃO AUXILIAR DE ALERTAS (Revisão, Óleo, IPVA, Licenciamento) ---
+        function checkVehicleAlerts(v) {
+            let alerts = [];
+            const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
+            const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
+            if (kmFaltanteRev <= 1000) alerts.push(kmFaltanteRev <= 0 ? 'Rev. Atrasada' : 'Rev. Próxima');
+
+            const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? v.kmUltimaTrocaOleo : (v.kmUltimaManutencao || 0);
+            const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? v.kmIntervaloOleo : 10000;
+            const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
+            const kmFaltanteOleo = kmProxOleo - (v.kmAtual || kmOleoUltima);
+            if (kmFaltanteOleo <= 1000) alerts.push(kmFaltanteOleo <= 0 ? 'Óleo Atrasado' : 'Óleo Próximo');
+
+            if (v.dataIpva) {
+                const diff = Math.ceil((new Date(v.dataIpva + 'T23:59:59') - new Date()) / (1000 * 60 * 60 * 24));
+                if (diff <= 30) alerts.push(diff < 0 ? 'IPVA Vencido' : 'IPVA Próximo');
+            }
+            if (v.dataLicenciamento) {
+                const diff = Math.ceil((new Date(v.dataLicenciamento + 'T23:59:59') - new Date()) / (1000 * 60 * 60 * 24));
+                if (diff <= 30) alerts.push(diff < 0 ? 'Licenc. Vencido' : 'Licenc. Próximo');
+            }
+            return alerts;
+        }
+
         // Definição do Checklist
         const categoriasChecklist = [
             { titulo: "Caçamba e Amarração", itens: ["Fechadura da tampa traseira", "Condições gerais da caçamba"] },
@@ -420,7 +457,7 @@
         // Renderiza o Formulário Dinâmico
         function renderChecklistForm() {
             const container = document.getElementById('checklistContainer');
-            container.innerHTML = '';
+            let formHtml = ''; // Variável para acumular o HTML (Performance)
             
             categoriasChecklist.forEach((cat, catIndex) => {
                 let htmlDiv = `<div class="card"><h3 class="text-lg font-bold text-blue-800 mb-3">${cat.titulo}</h3>`;
@@ -446,8 +483,11 @@
                         </div>`;
                 });
                 htmlDiv += `</div>`;
-                container.innerHTML += htmlDiv;
+                formHtml += htmlDiv;
             });
+            
+            // Injeta no DOM apenas uma vez
+            container.innerHTML = formHtml;
         }
 
         // Cadastro de Veículo (Local Storage)
@@ -464,6 +504,20 @@
             const kmUltima = parseInt(document.getElementById('v-km-ultima').value);
             const kmOleoUltima = parseInt(document.getElementById('v-km-oleo-ultima').value);
 
+            // --- Lógica Automática da Data de Emplacamento ---
+            const dataEmplacamento = document.getElementById('v-data-emplacamento').value;
+            let dataBaseIpvaLic = null;
+
+            if (dataEmplacamento) {
+                const empDate = new Date(dataEmplacamento + 'T12:00:00');
+                const anoAtual = new Date().getFullYear();
+                
+                // Pega o dia e mês do emplacamento original e projeta para o ano ATUAL
+                const dataProjetada = new Date(anoAtual, empDate.getMonth(), empDate.getDate(), 12, 0, 0);
+                dataBaseIpvaLic = dataProjetada.toISOString().split('T')[0];
+            }
+            // --------------------------------------------------
+
             const newVehicle = {
                 id_doc: 'VEIC_' + Date.now(),
                 placa: novaPlaca,
@@ -474,6 +528,8 @@
                 kmIntervaloOleo: parseInt(document.getElementById('v-km-oleo-intervalo').value),
                 kmAtual: kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima,
                 emailAlerta: document.getElementById('v-email').value,
+                dataIpva: dataBaseIpvaLic,
+                dataLicenciamento: dataBaseIpvaLic,
                 dataCadastro: new Date().toISOString()
             };
 
@@ -489,7 +545,7 @@
         // Renderiza lista de Veículos
         function renderVehicles() {
             const tbody = document.getElementById('vehicles-table-body');
-            tbody.innerHTML = '';
+            let rowsHtml = ''; // Variável para acumular o HTML (Performance)
 
             listaVeiculos.forEach(v => {
                 const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
@@ -500,7 +556,8 @@
                 const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
                 const kmFaltanteOleo = kmProxOleo - (v.kmAtual || kmOleoUltima);
                 
-                let precisaAlerta = (kmFaltanteRev <= 1000) || (kmFaltanteOleo <= 1000);
+                const alertasAtivos = checkVehicleAlerts(v);
+                let precisaAlerta = alertasAtivos.length > 0;
                 
                 const getStatusBadge = (label, faltante) => {
                     if (faltante <= 0) return `<div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-red-200">${label}: Atrasado!</div>`;
@@ -508,16 +565,26 @@
                     return `<div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-green-200">${label}: faltam ${faltante}km</div>`;
                 };
 
-                const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo);
+                const getDateBadge = (label, dateString) => {
+                    if (!dateString) return '';
+                    const diffDays = Math.ceil((new Date(dateString + 'T23:59:59') - new Date()) / (1000 * 60 * 60 * 24));
+                    const dataFormatada = new Date(dateString + 'T12:00:00').toLocaleDateString('pt-BR');
+                    if (diffDays < 0) return `<div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-red-200">${label}: Vencido (${dataFormatada})</div>`;
+                    if (diffDays <= 30) return `<div class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-yellow-200">${label}: ${diffDays} dias (${dataFormatada})</div>`;
+                    return `<div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max border border-green-200">${label}: OK (${dataFormatada})</div>`;
+                };
+
+                const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo) + getDateBadge('IPVA', v.dataIpva) + getDateBadge('Lic.', v.dataLicenciamento);
+                
                 const emailBtn = precisaAlerta ? `
-                    <button onclick="dispararEmail('${v.emailAlerta}', '${v.placa}', ${v.kmAtual || 0}, ${kmProxRev}, ${kmProxOleo})" class="text-blue-500 hover:text-blue-800" title="Enviar e-mail de alerta">
+                    <button onclick="dispararEmail('${escapeHTML(v.emailAlerta)}', '${escapeHTML(v.placa)}', ${v.kmAtual || 0}, ${kmProxRev}, ${kmProxOleo})" class="text-blue-500 hover:text-blue-800" title="Enviar e-mail de alerta">
                         <svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     </button>
                 ` : `<span class="text-gray-300"><svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></span>`;
 
                 const row = `
                     <tr class="hover:bg-gray-50">
-                        <td class="p-3 font-bold uppercase">${v.placa} <br><span class="text-xs font-normal text-gray-500 capitalize">${v.modelo}</span></td>
+                        <td class="p-3 font-bold uppercase">${escapeHTML(v.placa)} <br><span class="text-xs font-normal text-gray-500 capitalize">${escapeHTML(v.modelo)}</span></td>
                         <td class="p-3 font-medium">${v.kmAtual || 0}</td>
                         <td class="p-3 text-xs text-gray-600">Rev: ${kmProxRev}<br>Óleo: ${kmProxOleo}</td>
                         <td class="p-3 flex flex-col justify-center">${statusHtml}</td>
@@ -530,7 +597,9 @@
                             <button onclick="confirmarManutencao('${v.id_doc}', 'oleo')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Confirmar Troca de Óleo">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2.25c-2.485 5.5-5.25 8.75-5.25 12.75a5.25 5.25 0 0010.5 0c0-4-2.765-7.25-5.25-12.75z"></path></svg>
                             </button>
-                            <button onclick="generateQR('${v.placa}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Gerar QR Code">
+                            <button onclick="renovarDocumento('${v.id_doc}', 'ipva')" class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-1 rounded hover:bg-blue-200 mr-1" title="Confirmar Pagamento IPVA (+1 ano)">Pago IPVA</button>
+                            <button onclick="renovarDocumento('${v.id_doc}', 'licenciamento')" class="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-1 rounded hover:bg-purple-200 mr-2" title="Confirmar Pagamento Licenciamento (+1 ano)">Pago Lic.</button>
+                            <button onclick="generateQR('${escapeHTML(v.placa)}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Gerar QR Code">
                                 <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                             </button>
                             <button onclick="deleteVehicle('${v.id_doc}')" class="text-red-600 hover:text-red-800" title="Excluir">
@@ -539,8 +608,11 @@
                         </td>
                     </tr>
                 `;
-                tbody.innerHTML += row;
+                rowsHtml += row;
             });
+            
+            // Injeta no DOM apenas uma vez
+            tbody.innerHTML = rowsHtml;
         }
 
         function confirmarManutencao(docId, tipo) {
@@ -555,6 +627,36 @@
                 }
                 localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
                 renderVehicles();
+            }
+        }
+
+        function renovarDocumento(docId, tipo) {
+            const vIndex = listaVeiculos.findIndex(v => v.id_doc === docId);
+            if(vIndex > -1) {
+                let dataAtual = tipo === 'ipva' ? listaVeiculos[vIndex].dataIpva : listaVeiculos[vIndex].dataLicenciamento;
+                let label = tipo === 'ipva' ? 'IPVA' : 'Licenciamento';
+                
+                if (!dataAtual) {
+                    showMessage("Aviso", `Não há data de ${label} base cadastrada para este veículo. Edite ou exclua e recadastre para informar a data base.`);
+                    return;
+                }
+
+                // Adiciona +1 ano à data atual de forma inteligente (respeitando bissextos e fins de mês)
+                const dataObj = new Date(dataAtual + 'T12:00:00');
+                dataObj.setFullYear(dataObj.getFullYear() + 1);
+                const novaData = dataObj.toISOString().split('T')[0];
+
+                if (tipo === 'ipva') {
+                    listaVeiculos[vIndex].dataIpva = novaData;
+                } else {
+                    listaVeiculos[vIndex].dataLicenciamento = novaData;
+                }
+
+                localStorage.setItem('frota_veiculos', JSON.stringify(listaVeiculos));
+                renderVehicles();
+                renderDashboard();
+                renderHistory(); // Atualiza também os status no histórico
+                showMessage("Pagamento Confirmado!", `O vencimento do ${label} foi renovado automaticamente para o ano que vem: ${dataObj.toLocaleDateString('pt-BR')}.`);
             }
         }
 
@@ -666,9 +768,7 @@
             
             let alertas = 0;
             listaVeiculos.forEach(v => {
-                const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
-                const kmProxOleo = (v.kmUltimaTrocaOleo || v.kmUltimaManutencao || 0) + (v.kmIntervaloOleo || 10000);
-                if ((kmProxRev - (v.kmAtual || 0)) <= 1000 || (kmProxOleo - (v.kmAtual || 0)) <= 1000) alertas++;
+                if(checkVehicleAlerts(v).length > 0) alertas++;
             });
             document.getElementById('dash-total-alerts').innerText = alertas;
 
@@ -718,7 +818,6 @@
 
         function renderHistory() {
             const tbody = document.getElementById('history-table-body');
-            tbody.innerHTML = '';
             
             // Obtém dados usando a função de filtro
             const historico = getFilteredHistory();
@@ -728,23 +827,38 @@
                 return;
             }
             
+            let rowsHtml = ''; // Variável para acumular o HTML (Performance)
+            
             historico.forEach(c => {
                 const dataStr = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
-                const statusBadge = c.temAvaria 
-                    ? '<span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold border border-red-200">Avarias Registradas</span>'
-                    : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold border border-green-200">100% OK</span>';
                 
-                tbody.innerHTML += `
+                let statusBadge = c.temAvaria 
+                    ? '<span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold border border-red-200 block w-max mb-1">Avarias Registradas</span>'
+                    : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold border border-green-200 block w-max mb-1">Checklist 100% OK</span>';
+                
+                // Puxa os alertas reais do veículo para mostrar no histórico também
+                const veiculoNoBanco = listaVeiculos.find(v => v.placa === c.placa);
+                if (veiculoNoBanco) {
+                    const alertas = checkVehicleAlerts(veiculoNoBanco);
+                    if (alertas.length > 0) {
+                        statusBadge += `<span class="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded font-bold border border-orange-200 block w-max leading-tight" title="Existem manutenções ou documentos pendentes neste veículo">⚠️ ${alertas.join(' | ')}</span>`;
+                    }
+                }
+
+                rowsHtml += `
                     <tr class="hover:bg-gray-50 border-b">
                         <td class="p-3 text-xs whitespace-nowrap">${dataStr}</td>
-                        <td class="p-3 font-bold uppercase">${c.placa}</td>
-                        <td class="p-3 capitalize">${c.motorista}</td>
+                        <td class="p-3 font-bold uppercase">${escapeHTML(c.placa)}</td>
+                        <td class="p-3 capitalize">${escapeHTML(c.motorista)}</td>
                         <td class="p-3 text-gray-600">${c.km}km</td>
                         <td class="p-3">${statusBadge}</td>
-                        <td class="p-3 text-xs text-gray-500 max-w-xs truncate" title="${c.observacoesGerais}">${c.observacoesGerais || '-'}</td>
+                        <td class="p-3 text-xs text-gray-500 max-w-xs truncate" title="${escapeHTML(c.observacoesGerais)}">${escapeHTML(c.observacoesGerais) || '-'}</td>
                     </tr>
                 `;
             });
+            
+            // Injeta no DOM apenas uma vez
+            tbody.innerHTML = rowsHtml;
         }
 
         function downloadCSV(tipo) {
@@ -761,7 +875,14 @@
                 historico.forEach(c => {
                     const data = new Date(c.dataHora).toLocaleString('pt-BR');
                     const obs = (c.observacoesGerais || "").replace(/;/g, ",").replace(/\n/g, " ");
-                    const status = c.temAvaria ? "Com Avarias" : "OK";
+                    let status = c.temAvaria ? "Com Avarias" : "OK";
+                    
+                    const veic = listaVeiculos.find(v => v.placa === c.placa);
+                    if (veic) {
+                        const alertas = checkVehicleAlerts(veic);
+                        if (alertas.length > 0) status += ` (Pendências: ${alertas.join(', ')})`;
+                    }
+
                     csvContent += `${data};${c.motorista};${c.placa};${c.km};${status};${obs}\n`;
                 });
                 filename = "historico_checklists_frota.csv";
@@ -771,7 +892,7 @@
                     showMessage("Aviso", "Não há veículos cadastrados para exportar.");
                     return;
                 }
-                csvContent += "Placa;Modelo;KM Atual;Proxima Revisao;Proxima Troca de Oleo;Status Revisao;Status Oleo;Email Alerta\n";
+                csvContent += "Placa;Modelo;KM Atual;Proxima Revisao;Proxima Troca de Oleo;Vencimento IPVA;Vencimento Licenciamento;Status Revisao;Status Oleo;Email Alerta\n";
                 listaVeiculos.forEach(v => {
                     const kmProxRev = (v.kmUltimaManutencao || 0) + (v.kmIntervalo || 10000);
                     const kmFaltanteRev = kmProxRev - (v.kmAtual || v.kmUltimaManutencao || 0);
@@ -784,7 +905,9 @@
                     const statusRev = kmFaltanteRev <= 0 ? `ATRASADO (${Math.abs(kmFaltanteRev)}km)` : `Faltam ${kmFaltanteRev}km`;
                     const statusOleo = kmFaltanteOleo <= 0 ? `ATRASADO (${Math.abs(kmFaltanteOleo)}km)` : `Faltam ${kmFaltanteOleo}km`;
 
-                    csvContent += `${v.placa};${v.modelo};${v.kmAtual || 0};${kmProxRev};${kmProxOleo};${statusRev};${statusOleo};${v.emailAlerta}\n`;
+                    const formatDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : 'Não inf.';
+
+                    csvContent += `${v.placa};${v.modelo};${v.kmAtual || 0};${kmProxRev};${kmProxOleo};${formatDate(v.dataIpva)};${formatDate(v.dataLicenciamento)};${statusRev};${statusOleo};${v.emailAlerta}\n`;
                 });
                 filename = "relatorio_veiculos_manutencao.csv";
             }
@@ -812,7 +935,14 @@
                 
                 const tableData = historico.map(c => {
                     const dataStr = new Date(c.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
-                    const status = c.temAvaria ? "Com Avarias" : "100% OK";
+                    let status = c.temAvaria ? "Com Avarias" : "100% OK";
+                    
+                    const veic = listaVeiculos.find(v => v.placa === c.placa);
+                    if (veic) {
+                        const alertas = checkVehicleAlerts(veic);
+                        if (alertas.length > 0) status += `\n(⚠️ ${alertas.join(', ')})`;
+                    }
+
                     return [dataStr, c.placa.toUpperCase(), c.motorista, `${c.km} km`, status, c.observacoesGerais || '-'];
                 });
 
@@ -846,11 +976,12 @@
 
                     const statusRev = kmFaltanteRev <= 0 ? `ATRASADO (${Math.abs(kmFaltanteRev)}km)` : `Faltam ${kmFaltanteRev}km`;
                     const statusOleo = kmFaltanteOleo <= 0 ? `ATRASADO (${Math.abs(kmFaltanteOleo)}km)` : `Faltam ${kmFaltanteOleo}km`;
+                    const formatDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : 'Não inf.';
 
                     return [
                         `${v.placa.toUpperCase()} / ${v.modelo}`,
                         `${v.kmAtual || 0} km`,
-                        `Rev: ${kmProxRev} km\nÓleo: ${kmProxOleo} km`,
+                        `Rev: ${kmProxRev} km\nÓleo: ${kmProxOleo} km\nIPVA: ${formatDate(v.dataIpva)}\nLic: ${formatDate(v.dataLicenciamento)}`,
                         `Rev: ${statusRev}\nÓleo: ${statusOleo}`
                     ];
                 });
