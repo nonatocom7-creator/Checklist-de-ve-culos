@@ -617,25 +617,52 @@
         }
 
         function renderAdherence() {
-            const startStr = document.getElementById('adh-start').value || new Date().toISOString().split('T')[0];
-            const endStr = document.getElementById('adh-end').value || new Date().toISOString().split('T')[0];
-            const startDate = new Date(startStr + "T00:00:00"); const endDate = new Date(endStr + "T23:59:59");
+            const startStr = document.getElementById('adh-start').value;
+            const endStr = document.getElementById('adh-end').value;
             
+            let startDate = new Date(0);
+            let endDate = new Date("2100-01-01T23:59:59");
+
+            if(startStr) startDate = new Date(startStr + "T00:00:00");
+            if(endStr) endDate = new Date(endStr + "T23:59:59");
+
             let done=0, miss=0, html='';
             const checks = listaChecklists.filter(c => new Date(c.dataHora) >= startDate && new Date(c.dataHora) <= endDate);
 
             listaVeiculos.forEach(v => {
+                // Extrai a data de cadastro real baseada no ID gerado no momento do salvamento (ex: VEIC_171234567890)
+                let dataCadastro = new Date(0);
+                if(v.id_doc && v.id_doc.includes('_')) {
+                    const ts = parseInt(v.id_doc.split('_')[1]);
+                    if(!isNaN(ts)) {
+                        // Zera as horas da data de cadastro para comparar apenas o dia corretamente
+                        const d = new Date(ts);
+                        dataCadastro = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                    }
+                }
+
+                // Se a data final do filtro for anterior ao dia em que o carro foi cadastrado, ele é ignorado da conta.
+                if (endStr && endDate < dataCadastro) {
+                    html += `<tr class="border-b bg-gray-50"><td class="p-3 font-bold uppercase text-gray-400">${escapeHTML(v.placa)}<br><span class="text-[10px] font-normal capitalize">${escapeHTML(v.modelo)}</span></td><td class="p-3"><span class="bg-gray-200 text-gray-500 text-[10px] px-2 py-1 rounded font-bold">Não Cadastrado</span></td><td class="p-3 text-xs text-gray-400">Adicionado à frota após este período.</td></tr>`;
+                    return; // Sai do forEach atual e não contabiliza nas porcentagens
+                }
+
                 const isDone = checks.some(c => c.placa === v.placa);
                 if (isDone) {
-                    done++; html += `<tr class="border-b hover:bg-gray-50"><td class="p-3 font-bold uppercase">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold">Realizado</span></td><td class="p-3 text-xs text-green-600">Checklist OK no período.</td></tr>`;
+                    done++; 
+                    html += `<tr class="border-b hover:bg-gray-50"><td class="p-3 font-bold uppercase">${escapeHTML(v.placa)}<br><span class="text-[10px] font-normal text-gray-500 capitalize">${escapeHTML(v.modelo)}</span></td><td class="p-3"><span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold">Realizado</span></td><td class="p-3 text-xs text-green-600">Checklist OK no período.</td></tr>`;
                 } else {
-                    miss++; html += `<tr class="border-b bg-red-50 hover:bg-red-100"><td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-red-200 text-red-900 text-xs px-2 py-1 rounded font-bold">Faltante</span></td><td class="p-3 text-xs text-red-600">Nenhum checklist registrado.</td></tr>`;
+                    miss++; 
+                    html += `<tr class="border-b bg-red-50 hover:bg-red-100"><td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)}<br><span class="text-[10px] font-normal text-red-400 capitalize">${escapeHTML(v.modelo)}</span></td><td class="p-3"><span class="bg-red-200 text-red-900 text-[10px] px-2 py-1 rounded font-bold">Faltante</span></td><td class="p-3 text-xs text-red-600">Nenhum checklist registrado.</td></tr>`;
                 }
             });
+            
             document.getElementById('adherence-table-body').innerHTML = html;
             const total = done+miss;
-            document.getElementById('adh-done').innerText = done; document.getElementById('adh-done-pct').innerText = `(${total>0?((done/total)*100).toFixed(1):0}%)`;
-            document.getElementById('adh-miss').innerText = miss; document.getElementById('adh-miss-pct').innerText = `(${total>0?((miss/total)*100).toFixed(1):0}%)`;
+            document.getElementById('adh-done').innerText = done; 
+            document.getElementById('adh-done-pct').innerText = `(${total>0?((done/total)*100).toFixed(1):0}%)`;
+            document.getElementById('adh-miss').innerText = miss; 
+            document.getElementById('adh-miss-pct').innerText = `(${total>0?((miss/total)*100).toFixed(1):0}%)`;
         }
 
         function renderHistory() {
