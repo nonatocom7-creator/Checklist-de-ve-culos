@@ -136,8 +136,10 @@
         <div class="max-w-4xl mx-auto flex overflow-x-auto flex-nowrap shrink-0">
             <div class="tab-btn active whitespace-nowrap" onclick="switchTab('view-checklist', this)">📝 Novo Checklist</div>
             <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-dashboard', this)">📊 Dashboard</div>
+            <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-adherence', this)">📈 Aderência</div>
             <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-history', this)">📋 Histórico</div>
             <div class="tab-btn whitespace-nowrap" onclick="switchTab('view-vehicles', this)">🚗 Veículos & Alertas</div>
+            <div class="tab-btn whitespace-nowrap bg-blue-50 text-blue-700 ml-auto border-none" id="btn-sync" onclick="sincronizarComPlanilha(false)">🔄 Sincronizar</div>
         </div>
     </div>
 
@@ -186,7 +188,17 @@
         <!-- VIEW: DASHBOARD                         -->
         <!-- ======================================= -->
         <div id="view-dashboard" class="view-section">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Dashboard Resumo</h2>
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Dashboard Resumo</h2>
+                <div class="flex gap-2 items-center bg-white p-2 rounded shadow-sm border text-sm no-print">
+                    <label class="font-bold text-gray-600">Período:</label>
+                    <input type="date" id="dash-start" class="border rounded px-2 py-1" onchange="renderDashboard()">
+                    <span>até</span>
+                    <input type="date" id="dash-end" class="border rounded px-2 py-1" onchange="renderDashboard()">
+                    <button onclick="document.getElementById('dash-start').value=''; document.getElementById('dash-end').value=''; renderDashboard();" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded font-bold">Limpar</button>
+                </div>
+            </div>
+            
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="card bg-blue-50 border-l-4 border-blue-500">
                     <h3 class="text-gray-500 font-bold">Total Checklists</h3>
@@ -206,6 +218,45 @@
                 <div class="relative w-full h-64">
                     <canvas id="conformityChart"></canvas>
                 </div>
+            </div>
+        </div>
+
+        <!-- ======================================= -->
+        <!-- VIEW: ADHERENCE (ADERÊNCIA)             -->
+        <!-- ======================================= -->
+        <div id="view-adherence" class="view-section">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Controle de Aderência</h2>
+                <div class="flex gap-2 items-center bg-white p-2 rounded shadow-sm border text-sm no-print">
+                    <label class="font-bold text-gray-600">Data Base:</label>
+                    <input type="date" id="adherence-date" class="border rounded px-2 py-1" onchange="renderAdherence()">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="card bg-green-50 border-l-4 border-green-500">
+                    <h3 class="text-gray-500 font-bold">Realizaram o Checklist</h3>
+                    <p class="text-3xl font-black text-green-700"><span id="adh-done">0</span> <span class="text-lg font-normal text-green-600" id="adh-done-pct">(0%)</span></p>
+                </div>
+                <div class="card bg-red-50 border-l-4 border-red-500">
+                    <h3 class="text-gray-500 font-bold">Faltantes (Não realizaram)</h3>
+                    <p class="text-3xl font-black text-red-700"><span id="adh-miss">0</span> <span class="text-lg font-normal text-red-600" id="adh-miss-pct">(0%)</span></p>
+                </div>
+            </div>
+
+            <div class="card overflow-x-auto print-block">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="bg-gray-100 text-gray-600 border-b">
+                        <tr>
+                            <th class="p-3">Placa / Modelo</th>
+                            <th class="p-3">Status na Data</th>
+                            <th class="p-3">Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adherence-table-body" class="divide-y">
+                        <!-- JS Injects -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -393,7 +444,7 @@
 
         // --- CONFIGURAÇÃO GOOGLE SHEETS / APPSHEET ---
         // URL do seu Web App (Google Apps Script) configurada:
-        const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzL9KIf4yQoBhc2nyXimWIjDY8kqpLhdk-PXVg7QtmBpE6-TGs5XuR-lwEaXK3TBVSYag/exec";
+        const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwugIXbgHRWDxNYTARWczy-IJqXOypc6hKdNgSDN4K-gDFBetVMnQSBso2Lr-pz6o1f3g/exec";
 
         // Estado da aplicação (Salvando no LocalStorage para testes e uso offline temporário)
         let conformityChartInstance = null;
@@ -401,7 +452,49 @@
         let listaVeiculos = JSON.parse(localStorage.getItem('frota_veiculos')) || [];
         let vehicleToDeleteId = null; 
         
-        
+        // --- NOVA FUNÇÃO: Sincronização com o Google Sheets ---
+        async function sincronizarComPlanilha(silencioso = false) {
+            if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
+            
+            const btn = document.getElementById('btn-sync');
+            if(btn && !silencioso) btn.innerText = "⏳ Atualizando...";
+            
+            try {
+                // Faz uma requisição GET para baixar os dados da planilha
+                const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+                    method: 'GET',
+                    redirect: 'follow'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                const dadosPlanilha = await response.json();
+                
+                if (Array.isArray(dadosPlanilha)) {
+                    // Substitui os dados locais pelos dados OFICIAIS da planilha
+                    listaChecklists = dadosPlanilha;
+                    localStorage.setItem('frota_checklists', JSON.stringify(listaChecklists));
+                    
+                    // Atualiza as telas
+                    renderDashboard();
+                    renderAdherence();
+                    renderHistory();
+                    
+                    if(!silencioso) showMessage("Sincronizado!", "Seus dashboards e históricos foram atualizados com os dados da nuvem.");
+                }
+            } catch(e) {
+                // Ao invés de um console.error agressivo, tratamos como um aviso.
+                console.warn("Aviso de Sincronização em Background:", e.message);
+                if(!silencioso) {
+                    showMessage("Aviso de Conexão", "Não foi possível baixar os dados (Erro de Fetch/CORS). Certifique-se de que no Google Apps Script você criou uma 'Nova implantação' (New Deployment) com permissão para 'Qualquer pessoa'. O sistema continuará operando com os dados locais normalmente.");
+                }
+            }
+            
+            if(btn && !silencioso) btn.innerText = "🔄 Sincronizar";
+        }
+
         // --- FUNÇÃO AUXILIAR DE ALERTAS (Revisão, Óleo, IPVA, Licenciamento) ---
         function checkVehicleAlerts(v) {
             let alerts = [];
@@ -444,6 +537,7 @@
             if(btnElement) btnElement.classList.add('active');
 
             if(tabId === 'view-dashboard') renderDashboard();
+            if(tabId === 'view-adherence') renderAdherence();
             if(tabId === 'view-vehicles') renderVehicles();
             if(tabId === 'view-history') renderHistory();
         }
@@ -770,7 +864,22 @@
 
         
         function renderDashboard() {
-            document.getElementById('dash-total-checklists').innerText = listaChecklists.length;
+            // Filtro de datas do Dashboard
+            const startStr = document.getElementById('dash-start') ? document.getElementById('dash-start').value : '';
+            const endStr = document.getElementById('dash-end') ? document.getElementById('dash-end').value : '';
+            
+            let checklistsFiltrados = [...listaChecklists];
+            
+            if (startStr) {
+                const startDate = new Date(startStr + "T00:00:00");
+                checklistsFiltrados = checklistsFiltrados.filter(c => new Date(c.dataHora) >= startDate);
+            }
+            if (endStr) {
+                const endDate = new Date(endStr + "T23:59:59");
+                checklistsFiltrados = checklistsFiltrados.filter(c => new Date(c.dataHora) <= endDate);
+            }
+
+            document.getElementById('dash-total-checklists').innerText = checklistsFiltrados.length;
             document.getElementById('dash-total-vehicles').innerText = listaVeiculos.length;
             
             let alertas = 0;
@@ -781,7 +890,7 @@
 
             // Gráfico
             let totalConformes = 0; let totalAvarias = 0;
-            listaChecklists.forEach(c => c.itens.forEach(i => {
+            checklistsFiltrados.forEach(c => c.itens.forEach(i => {
                 if(i.status === 'Conforme') totalConformes++;
                 if(i.status === 'Nao Conforme') totalAvarias++;
             }));
@@ -796,6 +905,75 @@
                 },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
+        }
+
+        function renderAdherence() {
+            if (!document.getElementById('adherence-date')) return;
+            
+            // Se não tiver data selecionada, pega o dia de hoje
+            let dateStr = document.getElementById('adherence-date').value;
+            if (!dateStr) {
+                dateStr = new Date().toISOString().split('T')[0];
+                document.getElementById('adherence-date').value = dateStr;
+            }
+
+            const tbody = document.getElementById('adherence-table-body');
+            let rowsHtml = '';
+            
+            let doneCount = 0;
+            let missCount = 0;
+
+            if (listaVeiculos.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum veículo cadastrado na frota.</td></tr>`;
+                document.getElementById('adh-done').innerText = 0;
+                document.getElementById('adh-miss').innerText = 0;
+                return;
+            }
+
+            // Filtra os checklists EXATAMENTE do dia selecionado
+            const targetDateStr = new Date(dateStr + "T12:00:00").toLocaleDateString('pt-BR');
+            const checklistsDoDia = listaChecklists.filter(c => {
+                return new Date(c.dataHora).toLocaleDateString('pt-BR') === targetDateStr;
+            });
+
+            listaVeiculos.forEach(v => {
+                // Verifica se este veículo tem algum checklist no dia
+                const fezChecklist = checklistsDoDia.filter(c => c.placa === v.placa);
+                
+                if (fezChecklist.length > 0) {
+                    doneCount++;
+                    const c = fezChecklist[0]; // Pega o primeiro feito no dia
+                    const hora = new Date(c.dataHora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                    rowsHtml += `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="p-3 font-bold uppercase">${escapeHTML(v.placa)} <br><span class="text-xs font-normal text-gray-500 capitalize">${escapeHTML(v.modelo)}</span></td>
+                            <td class="p-3"><span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold border border-green-200">Realizado</span></td>
+                            <td class="p-3 text-xs text-gray-600">Às ${hora} por ${escapeHTML(c.motorista)}</td>
+                        </tr>
+                    `;
+                } else {
+                    missCount++;
+                    rowsHtml += `
+                        <tr class="bg-red-50 hover:bg-red-100 border-b">
+                            <td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)} <br><span class="text-xs font-normal text-red-600 capitalize">${escapeHTML(v.modelo)}</span></td>
+                            <td class="p-3"><span class="bg-red-200 text-red-900 text-xs px-2 py-1 rounded font-bold border border-red-300">Faltante</span></td>
+                            <td class="p-3 text-xs text-red-600">Nenhum checklist registrado nesta data.</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            tbody.innerHTML = rowsHtml;
+
+            const total = listaVeiculos.length;
+            const donePct = ((doneCount / total) * 100).toFixed(1);
+            const missPct = ((missCount / total) * 100).toFixed(1);
+
+            document.getElementById('adh-done').innerText = doneCount;
+            document.getElementById('adh-done-pct').innerText = `(${donePct}%)`;
+            
+            document.getElementById('adh-miss').innerText = missCount;
+            document.getElementById('adh-miss-pct').innerText = `(${missPct}%)`;
         }
 
         // Função de Suporte: Retorna o Histórico já Filtrado por Data e Ordenado
@@ -1034,8 +1212,15 @@
             renderChecklistForm();
             renderVehicles();
             renderDashboard();
+            renderAdherence();
             renderHistory();
             verificarQRCodeURL();
+            
+            // Sincroniza em segundo plano ao abrir o app (se não estiver na tela de QR code do motorista)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!urlParams.get('placa')) {
+                sincronizarComPlanilha(true); // Chamada silenciosa
+            }
         });
     </script>
 </body>
