@@ -44,7 +44,6 @@
     </style>
 </head>
 <body>
-
     <div id="nav-header" class="bg-white shadow-md sticky top-0 z-40 no-print">
         <div class="max-w-4xl mx-auto flex overflow-x-auto flex-nowrap shrink-0">
             <div class="tab-btn active whitespace-nowrap" onclick="switchTab('view-checklist', this)">📝 Novo Checklist</div>
@@ -80,6 +79,7 @@
                     </div>
                 </div>
 
+                <!-- Onde os itens de inspeção são inseridos -->
                 <div id="checklistContainer"></div>
 
                 <div class="card">
@@ -171,7 +171,6 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Histórico de Checklists</h2>
                 <div class="flex flex-wrap gap-2 justify-center">
                     <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar Lista Completa (PDF)</button>
-                    <!-- O botão de exportar CSV pode ficar aqui se você implementar -->
                 </div>
             </div>
 
@@ -274,7 +273,6 @@
                 </table>
             </div>
         </div>
-
     </div>
 
     <div id="qrModal" class="modal-overlay no-print">
@@ -307,7 +305,8 @@
     </div>
 
     <script>
-        const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzZteHc7ka0yOii6k797PPlz8ITprYzRebyGM8XdkVGe8CeIPRqOnRa5E9DV6FlMACPIg/exec";
+        // URL DO WEBHOOK CORRETO (Novo Fornecido pelo Usuário)
+        const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxYOkQIWEVjl-sDNoKcc2C6j8IZOOVCZ9eVqpSgMwEx0KaLYu92NcDvZ97_TdsngoM_1w/exec";
 
         let conformityChartInstance = null;
         let listaChecklists = [];
@@ -551,6 +550,7 @@
         });
 
         function dispararEmail(email, placa) { window.location.href = `mailto:${email}?subject=Alerta Frota: ${placa}&body=Verifique as manutencoes.`; }
+        
         function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex'; document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
             const qrC = document.getElementById('qrcode'); qrC.innerHTML = ''; 
@@ -579,29 +579,20 @@
             };
             
             let avariasCount = 0;
-            // IMPORTANTE: Aqui montamos a string para o AppSheet, exatamente como esperado
-            let arrayItensParaAppSheet = []; 
             
             for (let [k, v] of formData.entries()) {
                 if (k.startsWith('item_')) {
                     const label = formData.get('label_' + k);
                     const obs = formData.get('obs_' + k) || "";
                     
-                    // Salva no objeto JSON interno para nosso uso na tela
                     novoChecklist.itens.push({ nome: label, status: v, observacao: obs });
-                    
-                    // Formata string para salvar na coluna H do Google Sheets para o AppSheet ler
-                    // Exemplo: "Fechadura da tampa traseira: Conforme (Obs: )"
-                    arrayItensParaAppSheet.push(`${label}: ${v} (Obs: ${obs})`);
-
                     if(v === "Nao Conforme") avariasCount++;
                 }
             }
             novoChecklist.temAvaria = avariasCount > 0;
             
-            // Adiciona a string combinada ao payload que vai para o GAS
-            // O Apps Script precisará pegar esse 'itensString' e salvar na coluna H
-            novoChecklist.itensString = arrayItensParaAppSheet.join(' | ');
+            // NOVO: Transforma a lista de itens em uma string JSON pura para salvar na planilha!
+            novoChecklist.itensString = JSON.stringify(novoChecklist.itens);
 
             await enviarParaPlanilha(novoChecklist);
             
@@ -610,7 +601,7 @@
                 await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
             }
 
-            showMessage("Checklist Salvo!", "Enviado com sucesso.");
+            showMessage("Checklist Salvo!", "Enviado com sucesso para a nuvem. Acesse a aba Histórico para baixar o PDF.");
             this.reset(); window.scrollTo(0,0);
             
             await sincronizarComPlanilha(true);
@@ -693,10 +684,8 @@
             let html = '';
             hist.forEach((c, index) => {
                 const veic = listaVeiculos.find(v => v.placa === c.placa);
-                const alerts = veic ? checkVehicleAlerts(veic) : [];
                 const b1 = c.temAvaria ? '<span class="bg-red-100 text-red-800 text-[10px] px-2 py-1 rounded font-bold block w-max">Avarias</span>' : '<span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold block w-max">100% OK</span>';
                 
-                // Botão para gerar PDF individual
                 const pdfBtn = `<button onclick="baixarPDFIndividual('${c.id_doc}')" class="text-blue-600 hover:text-blue-800" title="Baixar Relatório do Veículo">
                                     <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </button>`;
@@ -714,9 +703,6 @@
             document.getElementById('history-table-body').innerHTML = html || `<tr><td colspan="7" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum checklist encontrado.</td></tr>`;
         }
 
-        // --- FUNÇÕES DE GERAÇÃO DE PDF ---
-
-        // PDF da Lista Geral (Histórico ou Veículos)
         function baixarPDF(tipo) { 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
@@ -757,7 +743,7 @@
             }
         }
 
-        // PDF Individual de um Checklist Específico (Relatório do Veículo)
+        // PDF Individual de um Checklist Específico (Quebra por \n)
         function baixarPDFIndividual(checklistId) {
             const checklist = listaChecklists.find(c => c.id_doc === checklistId);
             if (!checklist) {
@@ -792,34 +778,63 @@
                 ],
             });
 
-            // Parseia a string de itens que vem do Google Sheets
-            // Exemplo da string no Sheets: "Item 1: Conforme (Obs: ) | Item 2: Nao Conforme (Obs: Quebrado)"
+            // Parseia a string de itens (Preparado Inteligente para JSON e Texto)
             let tableItens = [];
+            let extraido = false;
             
-            // Verifica se 'itensString' existe (caso tenha sido salvo pela nova versão)
             if (checklist.itensString && typeof checklist.itensString === 'string') {
-                const itensArray = checklist.itensString.split(' | ');
-                itensArray.forEach(itemStr => {
-                    // Tenta separar "Nome: Status (Obs: texto)"
-                    const regex = /^(.*?):\s*(.*?)\s*\(Obs:\s*(.*?)\)$/;
-                    const match = itemStr.match(regex);
+                try {
+                    // 1. TENTA LER COMO JSON PRIMEIRO (Novo formato igual da sua imagem)
+                    const jsonParseado = JSON.parse(checklist.itensString);
                     
-                    if (match) {
-                        tableItens.push([match[1], match[2], match[3] || '-']);
-                    } else {
-                        // Fallback se o formato não bater exatamente
-                        tableItens.push([itemStr, '-', '-']);
+                    if (Array.isArray(jsonParseado)) {
+                        // Formato Array de Objetos: [{"nome":"Pneu", "status":"Conforme"}]
+                        jsonParseado.forEach(item => {
+                            tableItens.push([item.nome || '-', item.status || '-', item.observacao || '-']);
+                        });
+                        extraido = true;
+                    } else if (typeof jsonParseado === 'object') {
+                        // Formato Chave-Valor estilo AppSheet Puro: {"q1":"Conforme", "q2":"Nao Conforme"}
+                        for (let key in jsonParseado) {
+                            if (key !== 'timestamp') {
+                                tableItens.push([key, jsonParseado[key], '-']);
+                            }
+                        }
+                        extraido = true;
                     }
-                });
+                } catch (e) {
+                    console.log("A coluna não é um JSON válido, tentando leitura texto...");
+                }
+                
+                // 2. SE NÃO ERA JSON VÁLIDO (Ex: Checklists Antigos), FAZ A LEITURA ANTIGA
+                if (!extraido) {
+                    const itensArray = checklist.itensString.split(/[\n|]/); // Divide por quebra de linha ou barra
+                    itensArray.forEach(itemStr => {
+                        itemStr = itemStr.trim();
+                        if (!itemStr) return;
+                        
+                        const regex = /^(.*?):\s*(.*?)(?:\s*\(Obs:\s*(.*?)\))?$/i;
+                        const match = itemStr.match(regex);
+                        
+                        if (match) {
+                            tableItens.push([match[1].trim(), match[2].trim(), match[3] ? match[3].trim() : '-']);
+                        } else {
+                            tableItens.push([itemStr, '-', '-']);
+                        }
+                    });
+                    extraido = true;
+                }
             } else if (checklist.itens && Array.isArray(checklist.itens) && checklist.itens.length > 0) {
-                 // Caso esteja lendo dados onde 'itens' foi mantido como Array no JSON (depende de como o GAS envia de volta)
                  checklist.itens.forEach(item => {
                      tableItens.push([item.nome, item.status, item.observacao || '-']);
                  });
+                 extraido = true;
             }
             
-            if (tableItens.length === 0) {
-                tableItens = [['Nenhum item detalhado encontrado', '-', '-']];
+            if (!extraido || tableItens.length === 0) {
+                tableItens.push(['ERRO DE LEITURA', 'A coluna de itens não foi identificada.', '']);
+                const colunasDisponiveis = Object.keys(checklist).join(', ');
+                tableItens.push(['Colunas disponíveis (leitura do AppSheet):', colunasDisponiveis, 'Verifique no AppSheet se a coluna 7 está chegando']);
             }
 
             // Tabela de Itens Verificados
@@ -830,13 +845,13 @@
                 head: [['Item Verificado', 'Status', 'Observacoes']],
                 body: tableItens,
                 didParseCell: function (data) {
-                    // Colore a célula de Status de acordo com "Nao Conforme"
+                    // Colore de vermelho se for "Nao Conforme"
                     if (data.section === 'body' && data.column.index === 1) {
-                        if (data.cell.raw === 'Nao Conforme') {
-                            data.cell.styles.textColor = [220, 53, 69]; // Danger (Vermelho)
+                        if (data.cell.raw === 'Nao Conforme' || (data.cell.raw && data.cell.raw.toString().includes('Nao Conforme'))) {
+                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho
                             data.cell.styles.fontStyle = 'bold';
-                        } else if (data.cell.raw === 'Conforme') {
-                            data.cell.styles.textColor = [40, 167, 69]; // Success (Verde)
+                        } else if (data.cell.raw === 'Conforme' || (data.cell.raw && data.cell.raw.toString().includes('Conforme'))) {
+                            data.cell.styles.textColor = [40, 167, 69]; // Verde
                         }
                     }
                 }
@@ -855,7 +870,6 @@
             doc.save(`Checklist_${checklist.placa}_${checklist.dataHora.substring(0,10)}.pdf`);
         }
         // -------------------------------------
-
 
         function verificarQRCodeURL() {
             const p = new URLSearchParams(window.location.search).get('placa');
