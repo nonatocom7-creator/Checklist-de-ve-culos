@@ -29,7 +29,7 @@
         .btn-submit:hover { background-color: #004494; }
         
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-        .modal-content { background: white; padding: 25px; border-radius: 8px; max-width: 400px; width: 100%; text-align: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; max-width: 500px; width: 100%; text-align: center; max-height: 90vh; overflow-y: auto; }
 
         @media print {
             body { background-color: white; overflow-y: visible; }
@@ -44,6 +44,7 @@
     </style>
 </head>
 <body>
+
     <div id="nav-header" class="bg-white shadow-md sticky top-0 z-40 no-print">
         <div class="max-w-4xl mx-auto flex overflow-x-auto flex-nowrap shrink-0">
             <div class="tab-btn active whitespace-nowrap" onclick="switchTab('view-checklist', this)">📝 Novo Checklist</div>
@@ -302,7 +303,7 @@
     </div>
 
     <div id="detailsModal" class="modal-overlay no-print">
-        <div class="modal-content" style="max-width: 500px; text-align: left;">
+        <div class="modal-content text-left">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <h2 class="text-xl font-bold text-gray-800">Detalhes do Checklist</h2>
                 <button onclick="closeModal('detailsModal')" class="text-gray-500 hover:text-red-500 font-bold text-xl">&times;</button>
@@ -315,6 +316,7 @@
 
     <script>
         const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzZteHc7ka0yOii6k797PPlz8ITprYzRebyGM8XdkVGe8CeIPRqOnRa5E9DV6FlMACPIg/exec";
+        
         let conformityChartInstance = null;
         let listaChecklists = [];
         let listaVeiculos = [];
@@ -325,64 +327,75 @@
             return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
         }
 
-        // ESSA É A FUNÇÃO MÁGICA: Ela vasculha qualquer coluna e entende o texto puro.
+        // =========================================================================================
+        // FUNÇÃO CAÇADORA DE OBSERVAÇÕES: Acha a observação não importa o nome da coluna no Sheets
+        // =========================================================================================
+        function safeGetObs(c) {
+            return c['Observações'] || c['Observacoes'] || c.observacoes || c.observacoesGerais || c.Observações || c.Observacoes || "";
+        }
+
+        // =========================================================================================
+        // FUNÇÃO CAÇADORA DE AVARIAS (MUITO AGRESSIVA): Resolve de vez o problema de não achar a coluna
+        // =========================================================================================
         function safeGetItens(c) {
-            let rawItens = null;
-            
-            // 1. Verifica se foi salvo no formato de Array 'itens' (o esperado pelo seu script)
+            // 1. Tenta achar o array original se ele existir
             if (c.itens && Array.isArray(c.itens) && c.itens.length > 0) return c.itens;
 
-            // 2. Procura cegamente nas colunas pelo nome "detalhes" ou "itens"
-            for (let key in c) {
-                let k = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (k.includes('detalhe') || k.includes('iten') || k.includes('item')) {
+            let rawItens = null;
+
+            // 2. Busca pelo nome exato que estamos enviando (e variações comuns que o Sheets faz)
+            const possibleKeys = ['Detalhes (Itens)', 'Detalhes(Itens)', 'detalhesitens', 'Detalhes', 'detalhes', 'Itens', 'itens'];
+            for(let key of possibleKeys) {
+                if (c[key] && typeof c[key] === 'string') {
                     rawItens = c[key];
-                    if (rawItens) break;
+                    break;
                 }
             }
 
+            // 3. BUSCA MODO FORÇA BRUTA: Se o Apps Script mudou muito o nome da coluna, 
+            // nós vasculhamos TODAS as colunas que o Sheets mandou. Se o texto tiver a palavra "Conforme" e "pneus", é a lista!
+            if (!rawItens) {
+                for (let key in c) {
+                    let val = c[key];
+                    if (typeof val === 'string' && val.includes('Conforme') && val.includes(':')) {
+                        rawItens = val; // Encontramos o texto escondido!
+                        break;
+                    }
+                }
+            }
+
+            // Se ainda assim não achar nada, retorna vazio.
             if (!rawItens) return [];
 
-            // Se for um Array vindo de outra coluna, já resolve.
-            if (Array.isArray(rawItens)) return rawItens;
-
-            // 3. Se for TEXTO PURO (igual fica na sua planilha visualmente)
-            if (typeof rawItens === 'string') {
-                try { 
-                    let parsed = JSON.parse(rawItens);
-                    if (Array.isArray(parsed)) return parsed;
-                } catch(e) {}
-                
-                // FATIANDO O TEXTO: Separa cada linha
-                let itensLidos = [];
-                let linhas = String(rawItens).split(/\r?\n/);
-                
-                linhas.forEach(linha => {
-                    if(linha.trim() !== '') {
-                        let obs = "";
-                        let cleanLinha = linha;
-                        
-                        // Extrai a observação se houver "(Obs: ...)"
-                        let obsMatch = linha.match(/\(Obs:(.*?)\)$/);
-                        if (obsMatch) {
-                            obs = obsMatch[1].trim();
-                            cleanLinha = linha.replace(obsMatch[0], '').trim();
-                        }
-
-                        // Separa a peça do status pelos "Dois Pontos (:)"
-                        let partes = cleanLinha.split(':');
-                        if(partes.length >= 2) {
-                            let statusItem = partes.pop().trim(); // Ex: Pega o "Nao Conforme" lá no fim
-                            let nomeItem = partes.join(':').trim(); // Pega o resto "Fechadura da tampa traseira"
-                            itensLidos.push({ nome: nomeItem, status: statusItem, observacao: obs });
-                        } else {
-                            itensLidos.push({ nome: cleanLinha.trim(), status: '-', observacao: obs });
-                        }
+            // 4. Traduzindo o texto plano encontrado (com quebras de linha) para uma Lista formatada
+            let itensLidos = [];
+            let linhas = String(rawItens).split(/\r?\n/);
+            
+            linhas.forEach(linha => {
+                if(linha.trim() !== '') {
+                    let obs = "";
+                    let cleanLinha = linha;
+                    
+                    // Extrai a observação se existir "(Obs: ...)"
+                    let obsMatch = cleanLinha.match(/\(Obs:(.*?)\)$/);
+                    if (obsMatch) {
+                        obs = obsMatch[1].trim();
+                        cleanLinha = cleanLinha.replace(obsMatch[0], '').trim();
                     }
-                });
-                return itensLidos;
-            }
-            return [];
+
+                    // Acha os dois pontos ':' que separam o nome da peça do status
+                    let indexDoisPontos = cleanLinha.lastIndexOf(':');
+                    
+                    if (indexDoisPontos !== -1) {
+                        let nomeItem = cleanLinha.substring(0, indexDoisPontos).trim();
+                        let statusItem = cleanLinha.substring(indexDoisPontos + 1).trim();
+                        itensLidos.push({ nome: nomeItem, status: statusItem, observacao: obs });
+                    } else {
+                        itensLidos.push({ nome: cleanLinha.trim(), status: '-', observacao: obs });
+                    }
+                }
+            });
+            return itensLidos;
         }
 
         async function enviarParaPlanilha(dados) {
@@ -415,230 +428,15 @@
             if(btn && !silencioso) btn.innerText = "🔄 Sincronizar";
         }
 
+        // =========================================================================================
+        // GERADOR DA TELA DO NOVO CHECKLIST
+        // =========================================================================================
         const categoriasChecklist = [
             { titulo: "Caçamba e Amarração", itens: ["Fechadura da tampa traseira", "Condições gerais da caçamba"] },
             { titulo: "Pneus e Emergência", itens: ["Estado dos 4 pneus (calibragem/desgaste)", "Estepe, macaco e chave de roda"] },
             { titulo: "Motor e Fluidos", itens: ["Nível do óleo do motor", "Água do radiador e limpador"] },
             { titulo: "Elétrica e Estrutura", itens: ["Faróis, setas e luz de freio", "Lataria, para-brisa e retrovisores", "Documento e Cartão Combustível"] }
         ];
-
-        document.getElementById('checklistForm').addEventListener('submit', async function(e) {
-            e.preventDefault(); 
-            const btn = document.getElementById('btnSalvar');
-            btn.innerText = "Enviando à Nuvem..."; btn.disabled = true;
-
-            try {
-                const formData = new FormData(this);
-                const kmInformado = parseInt(formData.get('km'));
-                const placaInformada = formData.get('placa').toUpperCase();
-                
-                // CRIANDO O PACOTE (Exatamente no formato que seu script aprovava antes)
-                const novoChecklist = { 
-                    action: 'save_checklist', 
-                    id_doc: 'CHK_' + Date.now(), 
-                    dataHora: new Date().toISOString(), 
-                    motorista: formData.get('motorista'), 
-                    placa: placaInformada, 
-                    km: kmInformado, 
-                    observacoesGerais: formData.get('observacoes') || "",
-                    itens: [], // RESTAURADO O ARRAY PARA O SCRIPT DO GOOGLE CONVERTER
-                    temAvaria: false 
-                };
-                
-                let avariasCount = 0;
-                let textoPlanoParaPlanilha = "";
-                
-                // Lendo o formulário e montando as duas versões (Array e Texto)
-                for (let [k, v] of formData.entries()) {
-                    if (k.startsWith('item_')) {
-                        const label = formData.get('label_' + k);
-                        const obsForm = formData.get('obs_' + k);
-                        const obs = obsForm ? ` (Obs: ${obsForm})` : "";
-                        
-                        // 1. Alimenta o Array Original (Que o seu Apps Script transforma)
-                        novoChecklist.itens.push({ nome: label, status: v, observacao: obsForm || "" });
-                        
-                        // 2. Alimenta a String Extra de backup
-                        textoPlanoParaPlanilha += `${label}: ${v}${obs}\n`;
-                        
-                        if(v === "Nao Conforme") avariasCount++;
-                    }
-                }
-                
-                novoChecklist.temAvaria = avariasCount > 0;
-                
-                // BACKUP: Manda também o texto pronto por segurança, caso o script não converta.
-                novoChecklist['Detalhes (Itens)'] = textoPlanoParaPlanilha.trim();
-                novoChecklist['Detalhes'] = textoPlanoParaPlanilha.trim();
-
-                // Dispara para o Google Sheets
-                await enviarParaPlanilha(novoChecklist);
-                
-                // Atualiza KM do carro se for maior
-                const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
-                if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
-                    await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
-                }
-
-                showMessage("Checklist Salvo!", "Os dados foram enviados perfeitamente.");
-                this.reset(); window.scrollTo(0,0);
-                
-                // Puxa da nuvem para atualizar o Histórico e já testar a leitura
-                await sincronizarComPlanilha(true);
-            } catch (error) {
-                console.error("Erro no salvamento:", error);
-                showMessage("Erro", "Ocorreu um problema. Tente novamente.");
-            } finally {
-                btn.innerText = "Salvar Checklist"; btn.disabled = false;
-            }
-        });
-
-        function showChecklistDetails(docId) {
-            const checklist = listaChecklists.find(c => c.id_doc === docId);
-            if (!checklist) return;
-
-            let detailsHtml = `
-                <div class="mb-4 text-left text-sm text-gray-700 bg-gray-50 p-3 rounded border">
-                    <p><strong>Data:</strong> ${new Date(checklist.dataHora).toLocaleString('pt-BR')}</p>
-                    <p><strong>Placa:</strong> <span class="uppercase font-bold">${escapeHTML(checklist.placa)}</span></p>
-                    <p><strong>Motorista:</strong> ${escapeHTML(checklist.motorista)}</p>
-                    <p><strong>KM:</strong> ${checklist.km}</p>
-                </div>
-                <h3 class="font-bold text-lg mb-2 text-blue-800 text-left border-b pb-1">Itens Verificados</h3>
-                <ul class="text-left text-sm mb-4 space-y-1">
-            `;
-
-            // Chama nossa função mágica que converte o texto da planilha
-            const itensArr = safeGetItens(checklist);
-            
-            if (itensArr.length > 0) {
-                itensArr.forEach(item => {
-                    const isAvaria = item.status && item.status.toLowerCase().includes('nao conforme');
-                    const statusClass = !isAvaria ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
-                    
-                    detailsHtml += `
-                        <li class="border-b border-gray-100 py-2">
-                            <span class="${statusClass}">[${escapeHTML(item.status)}]</span> 
-                            <span class="text-gray-800 font-medium">${escapeHTML(item.nome)}</span>
-                            ${item.observacao ? `<div class="text-xs text-gray-600 mt-1 bg-yellow-50 p-1 rounded border border-yellow-100 inline-block">Obs: ${escapeHTML(item.observacao)}</div>` : ''}
-                        </li>
-                    `;
-                });
-            } else {
-                detailsHtml += `<li class="text-gray-500 italic py-2">Nenhum detalhe salvo na nuvem.</li>`;
-            }
-
-            detailsHtml += `
-                </ul>
-                <h3 class="font-bold text-lg mb-2 text-blue-800 text-left border-b pb-1">Observações Gerais</h3>
-                <p class="text-left text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded border">${escapeHTML(checklist.observacoesGerais) || 'Nenhuma observação geral relatada.'}</p>
-                
-                <div class="flex flex-col gap-2">
-                    <button onclick="baixarPDFSingle('${docId}')" class="bg-red-600 text-white px-4 py-3 rounded font-bold hover:bg-red-700 w-full flex items-center justify-center gap-2">
-                        🖨️ Baixar PDF Deste Checklist
-                    </button>
-                    <button onclick="closeModal('detailsModal')" class="bg-gray-200 text-gray-800 px-4 py-2 rounded font-bold hover:bg-gray-300 w-full">
-                        Fechar
-                    </button>
-                </div>
-            `;
-
-            document.getElementById('detailsContent').innerHTML = detailsHtml;
-            document.getElementById('detailsModal').style.display = 'flex';
-        }
-
-        function baixarPDFSingle(docId) {
-            const checklist = listaChecklists.find(c => c.id_doc === docId);
-            if (!checklist) return;
-
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            const title = `Relatorio de Checklist - ${checklist.placa}`;
-            doc.setFontSize(16);
-            doc.text(title, 14, 15);
-            doc.setFontSize(10);
-            doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
-
-            doc.autoTable({
-                startY: 28,
-                head: [['Informacoes Gerais']],
-                body: [
-                    ['Data/Hora: ' + new Date(checklist.dataHora).toLocaleString('pt-BR')],
-                    ['Placa: ' + escapeHTML(checklist.placa).toUpperCase()],
-                    ['Motorista: ' + escapeHTML(checklist.motorista)],
-                    ['KM Registrado: ' + checklist.km],
-                    ['Status Geral: ' + (checklist.temAvaria ? 'Com Avarias (Ver Abaixo)' : 'Conforme (100% OK)')]
-                ],
-                theme: 'striped',
-                headStyles: { fillColor: [200, 200, 200], textColor: [0,0,0] },
-                styles: { fontSize: 10 }
-            });
-
-            const itensArr = safeGetItens(checklist);
-            const itensBody = itensArr.length > 0 
-                ? itensArr.map(item => [escapeHTML(item.nome), escapeHTML(item.status), escapeHTML(item.observacao || '-')])
-                : [['Nenhum item detalhado encontrado', '-', '-']];
-
-            doc.autoTable({
-                startY: doc.lastAutoTable.finalY + 10,
-                head: [['Item Verificado', 'Status', 'Observacoes']],
-                body: itensBody,
-                theme: 'grid',
-                headStyles: { fillColor: [0, 86, 179] },
-                didParseCell: function(data) {
-                    if (data.section === 'body' && data.column.index === 1) {
-                        const val = data.cell.raw.toString().toLowerCase();
-                        if (val.includes('nao conforme') || val.includes('não conforme') || val.includes('avaria')) {
-                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho Avaria
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (val.includes('conforme') || val.includes('ok')) {
-                            data.cell.styles.textColor = [40, 167, 69]; // Verde OK
-                        }
-                    }
-                }
-            });
-
-            doc.autoTable({
-                startY: doc.lastAutoTable.finalY + 10,
-                head: [['Observacoes Gerais do Motorista']],
-                body: [[escapeHTML(checklist.observacoesGerais) || 'Nenhuma.']],
-                theme: 'plain',
-                headStyles: { fillColor: [240, 240, 240], textColor: [0,0,0] },
-                styles: { border: 1, borderColor: [200, 200, 200] }
-            });
-
-            doc.save(`Checklist_${checklist.placa}_${new Date(checklist.dataHora).getTime()}.pdf`);
-        }
-
-        function checkVehicleAlerts(v) {
-            let alerts = [];
-            const kmProxRev = (parseInt(v.kmUltimaManutencao) || 0) + (parseInt(v.kmIntervalo) || 10000);
-            const kmFaltanteRev = kmProxRev - (parseInt(v.kmAtual) || parseInt(v.kmUltimaManutencao) || 0);
-            if (kmFaltanteRev <= 1000) alerts.push(kmFaltanteRev <= 0 ? 'Rev. Atrasada' : 'Rev. Próxima');
-
-            const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? parseInt(v.kmUltimaTrocaOleo) : (parseInt(v.kmUltimaManutencao) || 0);
-            const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? parseInt(v.kmIntervaloOleo) : 10000;
-            const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
-            const kmFaltanteOleo = kmProxOleo - (parseInt(v.kmAtual) || kmOleoUltima);
-            if (kmFaltanteOleo <= 1000) alerts.push(kmFaltanteOleo <= 0 ? 'Óleo Atrasado' : 'Óleo Próximo');
-
-            if (v.dataIpva) {
-                const diff = Math.ceil((new Date(v.dataIpva + 'T23:59:59') - new Date()) / (1000 * 60 * 60 * 24));
-                if (diff <= 30) alerts.push(diff < 0 ? 'IPVA/Lic. Vencido' : 'IPVA/Lic. Próximo');
-            }
-            return alerts;
-        }
-
-        function switchTab(tabId, btnElement) {
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            if(btnElement) btnElement.classList.add('active');
-        }
-
-        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-        function showMessage(title, text) { document.getElementById('msgTitle').innerText = title; document.getElementById('msgText').innerText = text; document.getElementById('messageModal').style.display = 'flex'; }
 
         function renderChecklistForm() {
             const container = document.getElementById('checklistContainer');
@@ -662,81 +460,227 @@
             container.innerHTML = formHtml;
         }
 
-        function renderDashboard() {
-            const startStr = document.getElementById('dash-start').value; const endStr = document.getElementById('dash-end').value;
-            let checks = listaChecklists;
-            if(startStr) checks = checks.filter(c => new Date(c.dataHora) >= new Date(startStr+"T00:00:00"));
-            if(endStr) checks = checks.filter(c => new Date(c.dataHora) <= new Date(endStr+"T23:59:59"));
+        document.getElementById('checklistForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); 
+            const btn = document.getElementById('btnSalvar');
+            btn.innerText = "Enviando à Nuvem..."; btn.disabled = true;
 
-            document.getElementById('dash-total-checklists').innerText = checks.length;
-            document.getElementById('dash-total-vehicles').innerText = listaVeiculos.length;
-            document.getElementById('dash-total-alerts').innerText = listaVeiculos.filter(v => checkVehicleAlerts(v).length > 0).length;
+            try {
+                const formData = new FormData(this);
+                const kmInformado = parseInt(formData.get('km'));
+                const placaInformada = formData.get('placa').toUpperCase();
+                const observacaoFormulario = formData.get('observacoes') || "";
+                
+                let avariasCount = 0;
+                let itensArray = [];
+                let textoPlanoParaPlanilha = "";
+                
+                for (let [k, v] of formData.entries()) {
+                    if (k.startsWith('item_')) {
+                        const label = formData.get('label_' + k);
+                        const obsForm = formData.get('obs_' + k);
+                        const obs = obsForm ? ` (Obs: ${obsForm})` : "";
+                        
+                        itensArray.push({ nome: label, status: v, observacao: obsForm || "" });
+                        textoPlanoParaPlanilha += `${label}: ${v}${obs}\n`;
+                        
+                        if(v === "Nao Conforme") avariasCount++;
+                    }
+                }
+                
+                // MODO FORÇA BRUTA NO ENVIO: Mandando os dados com todas as chaves possíveis para garantir que 
+                // o Apps Script salve, não importa qual nome de coluna ele esteja esperando.
+                const novoChecklist = { 
+                    action: 'save_checklist', 
+                    id_doc: 'CHK_' + Date.now(), 
+                    'Data/Hora': new Date().toISOString(), // Nome exato da sua planilha
+                    dataHora: new Date().toISOString(),    // Nome código
+                    Motorista: formData.get('motorista'),
+                    motorista: formData.get('motorista'), 
+                    Placa: placaInformada,
+                    placa: placaInformada, 
+                    KM: kmInformado,
+                    km: kmInformado, 
+                    'Status Geral': avariasCount > 0 ? 'Com Avarias' : 'OK',
+                    statusGeral: avariasCount > 0 ? 'Com Avarias' : 'OK',
+                    'Observações': observacaoFormulario,        // Nome exato da sua planilha
+                    Observacoes: observacaoFormulario,
+                    observacoesGerais: observacaoFormulario,    // Nome código
+                    observacoes: observacaoFormulario,
+                    'Detalhes (Itens)': textoPlanoParaPlanilha.trim(), // TEXTO que preenche a planilha
+                    Detalhes: textoPlanoParaPlanilha.trim(),
+                    itens: itensArray, // ARRAY invisível caso o script prefira
+                    temAvaria: avariasCount > 0 
+                };
+                
+                await enviarParaPlanilha(novoChecklist);
+                
+                // Atualiza KM do carro
+                const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
+                if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
+                    await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
+                }
 
-            let conf = 0, avar = 0;
-            checks.forEach(c => { if(c.temAvaria) avar++; else conf++; });
+                showMessage("Checklist Salvo!", "Enviado perfeitamente. A planilha receberá todas as colunas.");
+                this.reset(); window.scrollTo(0,0);
+                
+                await sincronizarComPlanilha(true);
+            } catch (error) {
+                console.error("Erro no salvamento:", error);
+                showMessage("Erro", "Ocorreu um problema.");
+            } finally {
+                btn.innerText = "Salvar Checklist"; btn.disabled = false;
+            }
+        });
 
-            if(conformityChartInstance) conformityChartInstance.destroy();
-            conformityChartInstance = new Chart(document.getElementById('conformityChart').getContext('2d'), {
-                type: 'doughnut', data: { labels: ['Conforme', 'C/ Avarias'], datasets: [{ data: [conf, avar], backgroundColor: ['#28a745', '#dc3545'] }] },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
+        function showChecklistDetails(docId) {
+            const checklist = listaChecklists.find(c => c.id_doc === docId);
+            if (!checklist) return;
+
+            // Busca as observações de forma segura
+            const obsEncontrada = safeGetObs(checklist);
+
+            let detailsHtml = `
+                <div class="mb-4 text-left text-sm text-gray-700 bg-gray-50 p-3 rounded border">
+                    <p><strong>Data:</strong> ${new Date(checklist.dataHora || checklist['Data/Hora']).toLocaleString('pt-BR')}</p>
+                    <p><strong>Placa:</strong> <span class="uppercase font-bold">${escapeHTML(checklist.placa || checklist.Placa)}</span></p>
+                    <p><strong>Motorista:</strong> ${escapeHTML(checklist.motorista || checklist.Motorista)}</p>
+                    <p><strong>KM:</strong> ${checklist.km || checklist.KM}</p>
+                </div>
+                <h3 class="font-bold text-lg mb-2 text-blue-800 text-left border-b pb-1">Itens Verificados</h3>
+                <ul class="text-left text-sm mb-4 space-y-1">
+            `;
+
+            // O Caçador Mágico vai procurar as Avarias aqui
+            const itensArr = safeGetItens(checklist);
+            
+            if (itensArr.length > 0) {
+                itensArr.forEach(item => {
+                    const isAvaria = item.status && item.status.toLowerCase().includes('nao conforme');
+                    const statusClass = !isAvaria ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
+                    
+                    detailsHtml += `
+                        <li class="border-b border-gray-100 py-2">
+                            <span class="${statusClass}">[${escapeHTML(item.status)}]</span> 
+                            <span class="text-gray-800 font-medium">${escapeHTML(item.nome)}</span>
+                            ${item.observacao ? `<div class="text-xs text-gray-600 mt-1 bg-yellow-50 p-1 rounded border border-yellow-100 inline-block">Obs: ${escapeHTML(item.observacao)}</div>` : ''}
+                        </li>
+                    `;
+                });
+            } else {
+                detailsHtml += `<li class="text-gray-500 italic py-2">Nenhum item detalhado encontrado na nuvem para este registro específico.</li>`;
+            }
+
+            detailsHtml += `
+                </ul>
+                <h3 class="font-bold text-lg mb-2 text-blue-800 text-left border-b pb-1">Observações Gerais</h3>
+                <p class="text-left text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded border">${escapeHTML(obsEncontrada) || 'Nenhuma observação geral relatada.'}</p>
+                
+                <div class="flex flex-col gap-2">
+                    <button onclick="baixarPDFSingle('${docId}')" class="bg-red-600 text-white px-4 py-3 rounded font-bold hover:bg-red-700 w-full flex items-center justify-center gap-2">
+                        🖨️ Baixar PDF Deste Checklist
+                    </button>
+                    <button onclick="closeModal('detailsModal')" class="bg-gray-200 text-gray-800 px-4 py-2 rounded font-bold hover:bg-gray-300 w-full">
+                        Fechar
+                    </button>
+                </div>
+            `;
+
+            document.getElementById('detailsContent').innerHTML = detailsHtml;
+            document.getElementById('detailsModal').style.display = 'flex';
         }
 
-        function renderAdherence() {
-            const startStr = document.getElementById('adh-start').value;
-            const endStr = document.getElementById('adh-end').value;
-            let startDate = new Date(0); let endDate = new Date("2100-01-01T23:59:59");
-            if(startStr) startDate = new Date(startStr + "T00:00:00");
-            if(endStr) endDate = new Date(endStr + "T23:59:59");
+        function baixarPDFSingle(docId) {
+            const checklist = listaChecklists.find(c => c.id_doc === docId);
+            if (!checklist) return;
 
-            let done=0, miss=0, html='';
-            const checks = listaChecklists.filter(c => new Date(c.dataHora) >= startDate && new Date(c.dataHora) <= endDate);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const placaDoc = escapeHTML(checklist.placa || checklist.Placa).toUpperCase();
+            const title = `Relatorio de Checklist - ${placaDoc}`;
+            doc.setFontSize(16);
+            doc.text(title, 14, 15);
+            doc.setFontSize(10);
+            doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
 
-            listaVeiculos.forEach(v => {
-                let dataCadastro = new Date(0);
-                if(v.id_doc && v.id_doc.includes('_')) {
-                    const ts = parseInt(v.id_doc.split('_')[1]);
-                    if(!isNaN(ts)) { const d = new Date(ts); dataCadastro = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-                }
+            const ehAvaria = checklist.temAvaria || (checklist['Status Geral'] === 'Com Avarias');
 
-                if (endStr && endDate < dataCadastro) {
-                    html += `<tr class="border-b bg-gray-50"><td class="p-3 font-bold uppercase text-gray-400">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-gray-200 text-gray-500 text-[10px] px-2 py-1 rounded font-bold">Não Cadastrado</span></td><td class="p-3 text-xs text-gray-400">Adicionado após este período.</td></tr>`;
-                    return; 
-                }
+            doc.autoTable({
+                startY: 28,
+                head: [['Informacoes Gerais']],
+                body: [
+                    ['Data/Hora: ' + new Date(checklist.dataHora || checklist['Data/Hora']).toLocaleString('pt-BR')],
+                    ['Placa: ' + placaDoc],
+                    ['Motorista: ' + escapeHTML(checklist.motorista || checklist.Motorista)],
+                    ['KM Registrado: ' + (checklist.km || checklist.KM)],
+                    ['Status Geral: ' + (ehAvaria ? 'Com Avarias (Ver Abaixo)' : 'Conforme (100% OK)')]
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [200, 200, 200], textColor: [0,0,0] },
+                styles: { fontSize: 10 }
+            });
 
-                const isDone = checks.some(c => c.placa === v.placa);
-                if (isDone) {
-                    done++; html += `<tr class="border-b hover:bg-gray-50"><td class="p-3 font-bold uppercase">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold">Realizado</span></td><td class="p-3 text-xs text-green-600">Checklist OK no período.</td></tr>`;
-                } else {
-                    miss++; html += `<tr class="border-b bg-red-50 hover:bg-red-100"><td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-red-200 text-red-900 text-[10px] px-2 py-1 rounded font-bold">Faltante</span></td><td class="p-3 text-xs text-red-600">Nenhum checklist registrado.</td></tr>`;
+            // Chama o Caçador de Itens
+            const itensArr = safeGetItens(checklist);
+            const itensBody = itensArr.length > 0 
+                ? itensArr.map(item => [escapeHTML(item.nome), escapeHTML(item.status), escapeHTML(item.observacao || '-')])
+                : [['Nenhum item detalhado encontrado', '-', '-']];
+
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 10,
+                head: [['Item Verificado', 'Status', 'Observacoes']],
+                body: itensBody,
+                theme: 'grid',
+                headStyles: { fillColor: [0, 86, 179] },
+                didParseCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 1) {
+                        const val = data.cell.raw.toString().toLowerCase();
+                        if (val.includes('nao conforme') || val.includes('não conforme') || val.includes('avaria')) {
+                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (val.includes('conforme') || val.includes('ok')) {
+                            data.cell.styles.textColor = [40, 167, 69]; // Verde
+                        }
+                    }
                 }
             });
-            
-            document.getElementById('adherence-table-body').innerHTML = html;
-            const total = done+miss;
-            document.getElementById('adh-done').innerText = done; document.getElementById('adh-done-pct').innerText = `(${total>0?((done/total)*100).toFixed(1):0}%)`;
-            document.getElementById('adh-miss').innerText = miss; document.getElementById('adh-miss-pct').innerText = `(${total>0?((miss/total)*100).toFixed(1):0}%)`;
+
+            // Puxa as Observações Gerais Caçadas
+            const obsParaPDF = safeGetObs(checklist);
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 10,
+                head: [['Observacoes Gerais do Motorista']],
+                body: [[escapeHTML(obsParaPDF) || 'Nenhuma.']],
+                theme: 'plain',
+                headStyles: { fillColor: [240, 240, 240], textColor: [0,0,0] },
+                styles: { border: 1, borderColor: [200, 200, 200] }
+            });
+
+            doc.save(`Checklist_${placaDoc}_${new Date().getTime()}.pdf`);
         }
 
         function renderHistory() {
             const startStr = document.getElementById('filter-start').value, endStr = document.getElementById('filter-end').value;
             let hist = listaChecklists;
-            if(startStr) hist = hist.filter(c => new Date(c.dataHora) >= new Date(startStr+"T00:00:00"));
-            if(endStr) hist = hist.filter(c => new Date(c.dataHora) <= new Date(endStr+"T23:59:59"));
-            hist.sort((a,b) => new Date(b.dataHora) - new Date(a.dataHora));
+            if(startStr) hist = hist.filter(c => new Date(c.dataHora || c['Data/Hora']) >= new Date(startStr+"T00:00:00"));
+            if(endStr) hist = hist.filter(c => new Date(c.dataHora || c['Data/Hora']) <= new Date(endStr+"T23:59:59"));
+            hist.sort((a,b) => new Date(b.dataHora || b['Data/Hora']) - new Date(a.dataHora || a['Data/Hora']));
             
             let html = '';
             hist.forEach(c => {
-                const veic = listaVeiculos.find(v => v.placa === c.placa);
+                const placaC = c.placa || c.Placa;
+                const veic = listaVeiculos.find(v => v.placa === placaC);
                 const alerts = veic ? checkVehicleAlerts(veic) : [];
-                const b1 = c.temAvaria ? '<span class="bg-red-100 text-red-800 text-[10px] px-2 py-1 rounded font-bold block w-max">Avarias</span>' : '<span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold block w-max">100% OK</span>';
+                const temAvaria = c.temAvaria || (c['Status Geral'] === 'Com Avarias');
+                const b1 = temAvaria ? '<span class="bg-red-100 text-red-800 text-[10px] px-2 py-1 rounded font-bold block w-max">Avarias</span>' : '<span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold block w-max">100% OK</span>';
                 const b2 = alerts.length>0 ? `<span class="bg-orange-100 text-orange-800 text-[9px] px-1 rounded block mt-1 w-max">⚠️ ${alerts.join(', ')}</span>` : '';
                 
                 html += `<tr class="border-b hover:bg-gray-100 cursor-pointer transition-colors" onclick="showChecklistDetails('${c.id_doc}')">
-                    <td class="p-3 text-xs font-medium text-blue-600 underline">${new Date(c.dataHora).toLocaleString('pt-BR')}</td>
-                    <td class="p-3 font-bold uppercase">${escapeHTML(c.placa)}</td>
-                    <td class="p-3 capitalize">${escapeHTML(c.motorista)}</td>
-                    <td class="p-3">${c.km}</td>
+                    <td class="p-3 text-xs font-medium text-blue-600 underline">${new Date(c.dataHora || c['Data/Hora']).toLocaleString('pt-BR')}</td>
+                    <td class="p-3 font-bold uppercase">${escapeHTML(placaC)}</td>
+                    <td class="p-3 capitalize">${escapeHTML(c.motorista || c.Motorista)}</td>
+                    <td class="p-3">${c.km || c.KM}</td>
                     <td class="p-3">${b1}${b2}</td>
                     <td class="p-3 text-xs text-gray-500 italic">Ver detalhes ➡️</td>
                 </tr>`;
@@ -748,11 +692,11 @@
             const startStr = document.getElementById('filter-start').value;
             const endStr = document.getElementById('filter-end').value;
             let hist = listaChecklists;
-            if(startStr) hist = hist.filter(c => new Date(c.dataHora) >= new Date(startStr+"T00:00:00"));
-            if(endStr) hist = hist.filter(c => new Date(c.dataHora) <= new Date(endStr+"T23:59:59"));
-            hist.sort((a,b) => new Date(b.dataHora) - new Date(a.dataHora));
+            if(startStr) hist = hist.filter(c => new Date(c.dataHora || c['Data/Hora']) >= new Date(startStr+"T00:00:00"));
+            if(endStr) hist = hist.filter(c => new Date(c.dataHora || c['Data/Hora']) <= new Date(endStr+"T23:59:59"));
+            hist.sort((a,b) => new Date(b.dataHora || b['Data/Hora']) - new Date(a.dataHora || a['Data/Hora']));
 
-            if(hist.length === 0) return showMessage("Aviso", "Nenhum checklist no período selecionado.");
+            if(hist.length === 0) return showMessage("Aviso", "Nenhum checklist no período.");
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
@@ -762,17 +706,18 @@
 
             const bodyData = hist.map(c => {
                 let avariasTexto = "-";
-                if(c.temAvaria) {
+                const temAvaria = c.temAvaria || (c['Status Geral'] === 'Com Avarias');
+                if(temAvaria) {
                     const itens = safeGetItens(c);
                     const listAvarias = itens.filter(i => i.status.toLowerCase().includes('nao conforme')).map(i => i.nome);
                     avariasTexto = listAvarias.length > 0 ? listAvarias.join(', ') : "Possui Avarias";
                 }
                 return [
-                    new Date(c.dataHora).toLocaleString('pt-BR'),
-                    escapeHTML(c.placa),
-                    escapeHTML(c.motorista),
-                    c.km,
-                    c.temAvaria ? 'Avarias' : 'OK',
+                    new Date(c.dataHora || c['Data/Hora']).toLocaleString('pt-BR'),
+                    escapeHTML(c.placa || c.Placa),
+                    escapeHTML(c.motorista || c.Motorista),
+                    c.km || c.KM,
+                    temAvaria ? 'Avarias' : 'OK',
                     avariasTexto
                 ];
             });
@@ -807,19 +752,22 @@
 
             hist.forEach(c => {
                 let avariasTexto = "-";
-                if(c.temAvaria) {
+                const temAvaria = c.temAvaria || (c['Status Geral'] === 'Com Avarias');
+                if(temAvaria) {
                     const itens = safeGetItens(c);
                     const listAvarias = itens.filter(i => i.status.toLowerCase().includes('nao conforme')).map(i => i.nome);
                     avariasTexto = listAvarias.length > 0 ? listAvarias.join('; ') : "Possui Avarias";
                 }
+                
+                const obsSegura = safeGetObs(c);
                 const row = [
-                    new Date(c.dataHora).toLocaleString('pt-BR').replace(',', ''),
-                    escapeHTML(c.placa),
-                    escapeHTML(c.motorista),
-                    c.km,
-                    c.temAvaria ? 'Avarias' : 'OK',
+                    new Date(c.dataHora || c['Data/Hora']).toLocaleString('pt-BR').replace(',', ''),
+                    escapeHTML(c.placa || c.Placa),
+                    escapeHTML(c.motorista || c.Motorista),
+                    c.km || c.KM,
+                    temAvaria ? 'Avarias' : 'OK',
                     `"${avariasTexto}"`,
-                    `"${escapeHTML(c.observacoesGerais).replace(/"/g, '""') || ''}"`
+                    `"${escapeHTML(obsSegura).replace(/"/g, '""') || ''}"`
                 ];
                 csvContent += row.join(",") + "\n";
             });
@@ -829,8 +777,93 @@
             link.setAttribute("href", encodedUri);
             link.setAttribute("download", "Exportacao_Checklists.csv");
             document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            link.click(); document.body.removeChild(link);
+        }
+
+        // Funções auxiliares mantidas intactas
+        function checkVehicleAlerts(v) {
+            let alerts = [];
+            const kmProxRev = (parseInt(v.kmUltimaManutencao) || 0) + (parseInt(v.kmIntervalo) || 10000);
+            const kmFaltanteRev = kmProxRev - (parseInt(v.kmAtual) || parseInt(v.kmUltimaManutencao) || 0);
+            if (kmFaltanteRev <= 1000) alerts.push(kmFaltanteRev <= 0 ? 'Rev. Atrasada' : 'Rev. Próxima');
+
+            const kmOleoUltima = v.kmUltimaTrocaOleo !== undefined ? parseInt(v.kmUltimaTrocaOleo) : (parseInt(v.kmUltimaManutencao) || 0);
+            const kmOleoIntervalo = v.kmIntervaloOleo !== undefined ? parseInt(v.kmIntervaloOleo) : 10000;
+            const kmProxOleo = kmOleoUltima + kmOleoIntervalo;
+            const kmFaltanteOleo = kmProxOleo - (parseInt(v.kmAtual) || kmOleoUltima);
+            if (kmFaltanteOleo <= 1000) alerts.push(kmFaltanteOleo <= 0 ? 'Óleo Atrasado' : 'Óleo Próximo');
+
+            if (v.dataIpva) {
+                const diff = Math.ceil((new Date(v.dataIpva + 'T23:59:59') - new Date()) / (1000 * 60 * 60 * 24));
+                if (diff <= 30) alerts.push(diff < 0 ? 'IPVA/Lic. Vencido' : 'IPVA/Lic. Próximo');
+            }
+            return alerts;
+        }
+
+        function switchTab(tabId, btnElement) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            if(btnElement) btnElement.classList.add('active');
+        }
+
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+        function showMessage(title, text) { document.getElementById('msgTitle').innerText = title; document.getElementById('msgText').innerText = text; document.getElementById('messageModal').style.display = 'flex'; }
+
+        function renderDashboard() {
+            const startStr = document.getElementById('dash-start').value; const endStr = document.getElementById('dash-end').value;
+            let checks = listaChecklists;
+            if(startStr) checks = checks.filter(c => new Date(c.dataHora || c['Data/Hora']) >= new Date(startStr+"T00:00:00"));
+            if(endStr) checks = checks.filter(c => new Date(c.dataHora || c['Data/Hora']) <= new Date(endStr+"T23:59:59"));
+
+            document.getElementById('dash-total-checklists').innerText = checks.length;
+            document.getElementById('dash-total-vehicles').innerText = listaVeiculos.length;
+            document.getElementById('dash-total-alerts').innerText = listaVeiculos.filter(v => checkVehicleAlerts(v).length > 0).length;
+
+            let conf = 0, avar = 0;
+            checks.forEach(c => { if(c.temAvaria || c['Status Geral'] === 'Com Avarias') avar++; else conf++; });
+
+            if(conformityChartInstance) conformityChartInstance.destroy();
+            conformityChartInstance = new Chart(document.getElementById('conformityChart').getContext('2d'), {
+                type: 'doughnut', data: { labels: ['Conforme', 'C/ Avarias'], datasets: [{ data: [conf, avar], backgroundColor: ['#28a745', '#dc3545'] }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function renderAdherence() {
+            const startStr = document.getElementById('adh-start').value;
+            const endStr = document.getElementById('adh-end').value;
+            let startDate = new Date(0); let endDate = new Date("2100-01-01T23:59:59");
+            if(startStr) startDate = new Date(startStr + "T00:00:00");
+            if(endStr) endDate = new Date(endStr + "T23:59:59");
+
+            let done=0, miss=0, html='';
+            const checks = listaChecklists.filter(c => new Date(c.dataHora || c['Data/Hora']) >= startDate && new Date(c.dataHora || c['Data/Hora']) <= endDate);
+
+            listaVeiculos.forEach(v => {
+                let dataCadastro = new Date(0);
+                if(v.id_doc && v.id_doc.includes('_')) {
+                    const ts = parseInt(v.id_doc.split('_')[1]);
+                    if(!isNaN(ts)) { const d = new Date(ts); dataCadastro = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+                }
+
+                if (endStr && endDate < dataCadastro) {
+                    html += `<tr class="border-b bg-gray-50"><td class="p-3 font-bold uppercase text-gray-400">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-gray-200 text-gray-500 text-[10px] px-2 py-1 rounded font-bold">Não Cadastrado</span></td><td class="p-3 text-xs text-gray-400">Adicionado após.</td></tr>`;
+                    return; 
+                }
+
+                const isDone = checks.some(c => (c.placa || c.Placa) === v.placa);
+                if (isDone) {
+                    done++; html += `<tr class="border-b hover:bg-gray-50"><td class="p-3 font-bold uppercase">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold">Realizado</span></td><td class="p-3 text-xs text-green-600">Checklist OK no período.</td></tr>`;
+                } else {
+                    miss++; html += `<tr class="border-b bg-red-50 hover:bg-red-100"><td class="p-3 font-bold uppercase text-red-800">${escapeHTML(v.placa)}</td><td class="p-3"><span class="bg-red-200 text-red-900 text-[10px] px-2 py-1 rounded font-bold">Faltante</span></td><td class="p-3 text-xs text-red-600">Nenhum checklist registrado.</td></tr>`;
+                }
+            });
+            
+            document.getElementById('adherence-table-body').innerHTML = html;
+            const total = done+miss;
+            document.getElementById('adh-done').innerText = done; document.getElementById('adh-done-pct').innerText = `(${total>0?((done/total)*100).toFixed(1):0}%)`;
+            document.getElementById('adh-miss').innerText = miss; document.getElementById('adh-miss-pct').innerText = `(${total>0?((miss/total)*100).toFixed(1):0}%)`;
         }
 
         document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
