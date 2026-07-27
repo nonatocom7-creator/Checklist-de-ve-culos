@@ -514,8 +514,7 @@
                 
                 novoChecklist.temAvaria = avariasCount > 0;
                 
-                // Envia para a nuvem sob o nome da coluna padrão. 
-                // Sem enviar arrays estranhos, só o texto que o Google Sheets gosta.
+                // CRITICAL FIX: Send the plain text exactly as it was working before
                 novoChecklist['Detalhes (Itens)'] = textoPlanoParaPlanilha.trim();
 
                 await enviarParaPlanilha(novoChecklist);
