@@ -56,6 +56,7 @@
     </div>
 
     <div class="max-w-4xl mx-auto">
+        
         <div id="view-checklist" class="view-section active">
             <h2 class="text-2xl font-bold text-center text-blue-800 mb-6 no-print">Realizar Checklist</h2>
             
@@ -168,7 +169,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Histórico de Checklists</h2>
                 <div class="flex flex-wrap gap-2 justify-center">
-                    <button onclick="baixarPDFGlobal()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar PDF (Lista)</button>
+                    <button onclick="baixarPDFGlobal()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar Lista (PDF)</button>
                     <button onclick="downloadCSVGlobal()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">📊 Exportar CSV</button>
                 </div>
             </div>
@@ -314,7 +315,6 @@
 
     <script>
         const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzZteHc7ka0yOii6k797PPlz8ITprYzRebyGM8XdkVGe8CeIPRqOnRa5E9DV6FlMACPIg/exec";
-
         let conformityChartInstance = null;
         let listaChecklists = [];
         let listaVeiculos = [];
@@ -325,11 +325,14 @@
             return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
         }
 
-        // Função super robusta para ler os itens, não importa como o Sheets salvou.
+        // ESSA É A FUNÇÃO MÁGICA: Ela vasculha qualquer coluna e entende o texto puro.
         function safeGetItens(c) {
             let rawItens = null;
             
-            // Busca a coluna de forma cega para não ter problema com caracteres especiais
+            // 1. Verifica se foi salvo no formato de Array 'itens' (o esperado pelo seu script)
+            if (c.itens && Array.isArray(c.itens) && c.itens.length > 0) return c.itens;
+
+            // 2. Procura cegamente nas colunas pelo nome "detalhes" ou "itens"
             for (let key in c) {
                 let k = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
                 if (k.includes('detalhe') || k.includes('iten') || k.includes('item')) {
@@ -340,16 +343,19 @@
 
             if (!rawItens) return [];
 
-            // Se o Google Sheets guardou como texto (linha a linha, igual o seu print)
+            // Se for um Array vindo de outra coluna, já resolve.
+            if (Array.isArray(rawItens)) return rawItens;
+
+            // 3. Se for TEXTO PURO (igual fica na sua planilha visualmente)
             if (typeof rawItens === 'string') {
                 try { 
-                    const parsed = JSON.parse(rawItens); 
+                    let parsed = JSON.parse(rawItens);
                     if (Array.isArray(parsed)) return parsed;
                 } catch(e) {}
                 
-                // Leitura do Texto Puro: fatia linha por linha
-                const linhas = String(rawItens).split(/\r?\n/);
+                // FATIANDO O TEXTO: Separa cada linha
                 let itensLidos = [];
+                let linhas = String(rawItens).split(/\r?\n/);
                 
                 linhas.forEach(linha => {
                     if(linha.trim() !== '') {
@@ -363,10 +369,11 @@
                             cleanLinha = linha.replace(obsMatch[0], '').trim();
                         }
 
+                        // Separa a peça do status pelos "Dois Pontos (:)"
                         let partes = cleanLinha.split(':');
                         if(partes.length >= 2) {
-                            let statusItem = partes.pop().trim(); // Pega "Nao Conforme" no final
-                            let nomeItem = partes.join(':').trim(); // O resto é a peça
+                            let statusItem = partes.pop().trim(); // Ex: Pega o "Nao Conforme" lá no fim
+                            let nomeItem = partes.join(':').trim(); // Pega o resto "Fechadura da tampa traseira"
                             itensLidos.push({ nome: nomeItem, status: statusItem, observacao: obs });
                         } else {
                             itensLidos.push({ nome: cleanLinha.trim(), status: '-', observacao: obs });
@@ -375,8 +382,6 @@
                 });
                 return itensLidos;
             }
-            
-            if (Array.isArray(rawItens)) return rawItens;
             return [];
         }
 
@@ -389,29 +394,23 @@
 
         async function sincronizarComPlanilha(silencioso = false) {
             if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
-            
             const btn = document.getElementById('btn-sync');
             if(btn && !silencioso) btn.innerText = "⏳ Baixando Nuvem...";
             
             try {
                 const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, { method: 'GET', redirect: 'follow' });
                 if (!response.ok) throw new Error("Falha HTTP");
-                
                 const dadosPlanilha = await response.json();
                 
                 if (dadosPlanilha.checklists && dadosPlanilha.veiculos) {
                     listaChecklists = dadosPlanilha.checklists;
                     listaVeiculos = dadosPlanilha.veiculos;
-                    
-                    renderDashboard();
-                    renderAdherence();
-                    renderHistory();
-                    renderVehicles();
-                    if(!silencioso) showMessage("Nuvem Sincronizada", "O sistema atualizou os dados lendo diretamente da nuvem.");
+                    renderDashboard(); renderAdherence(); renderHistory(); renderVehicles();
+                    if(!silencioso) showMessage("Nuvem Sincronizada", "Dados atualizados com sucesso.");
                 }
             } catch(e) {
                 console.warn("Aviso:", e.message);
-                if(!silencioso) showMessage("Erro de Conexão", "Mantendo dados atuais na tela.");
+                if(!silencioso) showMessage("Erro de Conexão", "Mantendo dados atuais.");
             }
             if(btn && !silencioso) btn.innerText = "🔄 Sincronizar";
         }
@@ -433,6 +432,7 @@
                 const kmInformado = parseInt(formData.get('km'));
                 const placaInformada = formData.get('placa').toUpperCase();
                 
+                // CRIANDO O PACOTE (Exatamente no formato que seu script aprovava antes)
                 const novoChecklist = { 
                     action: 'save_checklist', 
                     id_doc: 'CHK_' + Date.now(), 
@@ -440,20 +440,25 @@
                     motorista: formData.get('motorista'), 
                     placa: placaInformada, 
                     km: kmInformado, 
-                    observacoesGerais: formData.get('observacoes') || "", 
+                    observacoesGerais: formData.get('observacoes') || "",
+                    itens: [], // RESTAURADO O ARRAY PARA O SCRIPT DO GOOGLE CONVERTER
                     temAvaria: false 
                 };
                 
                 let avariasCount = 0;
                 let textoPlanoParaPlanilha = "";
                 
-                // Constrói o texto perfeitamente formatado para o Sheets
+                // Lendo o formulário e montando as duas versões (Array e Texto)
                 for (let [k, v] of formData.entries()) {
                     if (k.startsWith('item_')) {
                         const label = formData.get('label_' + k);
                         const obsForm = formData.get('obs_' + k);
                         const obs = obsForm ? ` (Obs: ${obsForm})` : "";
                         
+                        // 1. Alimenta o Array Original (Que o seu Apps Script transforma)
+                        novoChecklist.itens.push({ nome: label, status: v, observacao: obsForm || "" });
+                        
+                        // 2. Alimenta a String Extra de backup
                         textoPlanoParaPlanilha += `${label}: ${v}${obs}\n`;
                         
                         if(v === "Nao Conforme") avariasCount++;
@@ -462,27 +467,27 @@
                 
                 novoChecklist.temAvaria = avariasCount > 0;
                 
-                // SOLUÇÃO INFALÍVEL: Mandamos o mesmo texto em 3 chaves diferentes.
-                // O Google Apps Script vai pegar a que combinar melhor com o nome da coluna dele!
+                // BACKUP: Manda também o texto pronto por segurança, caso o script não converta.
                 novoChecklist['Detalhes (Itens)'] = textoPlanoParaPlanilha.trim();
                 novoChecklist['Detalhes'] = textoPlanoParaPlanilha.trim();
-                novoChecklist['Itens'] = textoPlanoParaPlanilha.trim();
 
+                // Dispara para o Google Sheets
                 await enviarParaPlanilha(novoChecklist);
                 
-                // Atualiza KM do carro
+                // Atualiza KM do carro se for maior
                 const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
                 if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
                     await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
                 }
 
-                showMessage("Checklist Salvo!", "Os dados e detalhes foram enviados para o Google Sheets.");
+                showMessage("Checklist Salvo!", "Os dados foram enviados perfeitamente.");
                 this.reset(); window.scrollTo(0,0);
                 
+                // Puxa da nuvem para atualizar o Histórico e já testar a leitura
                 await sincronizarComPlanilha(true);
             } catch (error) {
                 console.error("Erro no salvamento:", error);
-                showMessage("Erro", "Ocorreu um problema ao enviar. Verifique sua conexão.");
+                showMessage("Erro", "Ocorreu um problema. Tente novamente.");
             } finally {
                 btn.innerText = "Salvar Checklist"; btn.disabled = false;
             }
@@ -503,6 +508,7 @@
                 <ul class="text-left text-sm mb-4 space-y-1">
             `;
 
+            // Chama nossa função mágica que converte o texto da planilha
             const itensArr = safeGetItens(checklist);
             
             if (itensArr.length > 0) {
@@ -584,10 +590,10 @@
                     if (data.section === 'body' && data.column.index === 1) {
                         const val = data.cell.raw.toString().toLowerCase();
                         if (val.includes('nao conforme') || val.includes('não conforme') || val.includes('avaria')) {
-                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho
+                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho Avaria
                             data.cell.styles.fontStyle = 'bold';
                         } else if (val.includes('conforme') || val.includes('ok')) {
-                            data.cell.styles.textColor = [40, 167, 69]; // Verde
+                            data.cell.styles.textColor = [40, 167, 69]; // Verde OK
                         }
                     }
                 }
@@ -759,7 +765,7 @@
                 if(c.temAvaria) {
                     const itens = safeGetItens(c);
                     const listAvarias = itens.filter(i => i.status.toLowerCase().includes('nao conforme')).map(i => i.nome);
-                    avariasTexto = listAvarias.length > 0 ? listAvarias.join(', ') : "Possui Avarias (Não Listadas)";
+                    avariasTexto = listAvarias.length > 0 ? listAvarias.join(', ') : "Possui Avarias";
                 }
                 return [
                     new Date(c.dataHora).toLocaleString('pt-BR'),
@@ -964,6 +970,7 @@
         });
 
         function dispararEmail(email, placa) { window.location.href = `mailto:${email}?subject=Alerta Frota: ${placa}&body=Verifique as manutencoes.`; }
+        
         function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex'; document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
             const qrC = document.getElementById('qrcode'); qrC.innerHTML = ''; 
