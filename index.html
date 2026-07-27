@@ -170,8 +170,8 @@
             <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Histórico de Checklists</h2>
                 <div class="flex flex-wrap gap-2 justify-center">
-                    <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar PDF</button>
-                    <button onclick="downloadCSV('history')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">📊 Exportar CSV</button>
+                    <button onclick="baixarPDF('history')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar Lista Completa (PDF)</button>
+                    <!-- O botão de exportar CSV pode ficar aqui se você implementar -->
                 </div>
             </div>
 
@@ -197,6 +197,7 @@
                             <th class="p-3">KM</th>
                             <th class="p-3">Status</th>
                             <th class="p-3">Observações</th>
+                            <th class="p-3 text-center no-print">Ação</th>
                         </tr>
                     </thead>
                     <tbody id="history-table-body" class="divide-y">
@@ -209,8 +210,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Gestão de Veículos e Alertas</h2>
                 <div class="flex gap-2">
-                    <button onclick="baixarPDF('vehicles')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar PDF</button>
-                    <button onclick="downloadCSV('vehicles')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">📊 Exportar CSV</button>
+                    <button onclick="baixarPDF('vehicles')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2">🖨️ Baixar Lista (PDF)</button>
                 </div>
             </div>
             
@@ -330,7 +330,7 @@
             if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
             
             const btn = document.getElementById('btn-sync');
-            if(btn && !silencioso) btn.innerText = "⏳ Baixando Nuvem...";
+            if(btn && !silencioso) btn.innerText = "⏳ Baixando...";
             
             try {
                 const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, { method: 'GET', redirect: 'follow' });
@@ -338,7 +338,6 @@
                 
                 const dadosPlanilha = await response.json();
                 
-                // Atualiza Arrays em Memória apenas com os dados do Google Sheets
                 if (dadosPlanilha.checklists && dadosPlanilha.veiculos) {
                     listaChecklists = dadosPlanilha.checklists;
                     listaVeiculos = dadosPlanilha.veiculos;
@@ -351,7 +350,7 @@
                 }
             } catch(e) {
                 console.warn("Aviso:", e.message);
-                if(!silencioso) showMessage("Erro de Conexão", "Certifique-se que fez a 'Nova Implantação' no Apps Script. Mantendo dados atuais na tela.");
+                if(!silencioso) showMessage("Erro de Conexão", "Não foi possível puxar os dados. Verifique a URL do Webhook.");
             }
             if(btn && !silencioso) btn.innerText = "🔄 Sincronizar";
         }
@@ -453,9 +452,8 @@
 
             await enviarParaPlanilha(newVehicle);
             this.reset();
-            showMessage("Sucesso", "Veículo adicionado ao AppSheet/Google Sheets!");
+            showMessage("Sucesso", "Veículo adicionado!");
             
-            // Recarrega os dados fresquinhos do Sheets
             await sincronizarComPlanilha(true);
             btn.innerText = "Salvar Veículo na Nuvem"; btn.disabled = false;
         });
@@ -480,7 +478,7 @@
                     return `<div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold mb-1 w-max">${lbl}: OK (${dt})</div>`;
                 };
 
-                const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo) + getDateBadge('Imposto Anual', v.dataIpva);
+                const statusHtml = getStatusBadge('Rev', kmFaltanteRev) + getStatusBadge('Óleo', kmFaltanteOleo) + getDateBadge('Imposto', v.dataIpva);
                 const isAlert = checkVehicleAlerts(v).length > 0;
 
                 rowsHtml += `
@@ -528,26 +526,26 @@
                 msg = `Imposto renovado para ${dataObj.getFullYear()}!`;
             }
 
-            renderVehicles(); // Atualiza UI imediatamente para sensação de rapidez
-            showMessage("Atualizando...", "Salvando no Google Sheets...");
+            renderVehicles();
+            showMessage("Atualizando...", "Salvando...");
             await enviarParaPlanilha(payload);
-            closeModal('messageModal'); // Fecha o modal de "salvando..."
+            closeModal('messageModal');
             showMessage("Sucesso", msg);
         }
 
         function deleteVehicle(docId) {
             vehicleToDeleteId = docId;
-            document.getElementById('confirmText').innerText = "Tem certeza que deseja excluir este veículo de forma definitiva? Ele também será apagado do AppSheet.";
+            document.getElementById('confirmText').innerText = "Deseja excluir este veículo? Ele também será apagado da base.";
             document.getElementById('confirmModal').style.display = 'flex';
         }
 
         document.getElementById('btnConfirmYes').addEventListener('click', async () => {
             if (vehicleToDeleteId) {
                 closeModal('confirmModal');
-                showMessage("Processando", "Apagando do Google Sheets...");
+                showMessage("Processando", "Apagando...");
                 await enviarParaPlanilha({ action: 'delete_vehicle', id_doc: vehicleToDeleteId });
-                await sincronizarComPlanilha(true); // Puxa tabela limpa para garantir
-                showMessage("Sucesso", "Veículo removido da nuvem.");
+                await sincronizarComPlanilha(true);
+                showMessage("Sucesso", "Veículo removido.");
                 vehicleToDeleteId = null;
             }
         });
@@ -562,25 +560,49 @@
         document.getElementById('checklistForm').addEventListener('submit', async function(e) {
             e.preventDefault(); 
             const btn = document.getElementById('btnSalvar');
-            btn.innerText = "Enviando à Nuvem..."; btn.disabled = true;
+            btn.innerText = "Enviando..."; btn.disabled = true;
 
             const formData = new FormData(this);
             const kmInformado = parseInt(formData.get('km'));
             const placaInformada = formData.get('placa').toUpperCase();
             
-            const novoChecklist = { action: 'save_checklist', id_doc: 'CHK_' + Date.now(), dataHora: new Date().toISOString(), motorista: formData.get('motorista'), placa: placaInformada, km: kmInformado, observacoesGerais: formData.get('observacoes'), itens: [], temAvaria: false };
+            const novoChecklist = { 
+                action: 'save_checklist', 
+                id_doc: 'CHK_' + Date.now(), 
+                dataHora: new Date().toISOString(), 
+                motorista: formData.get('motorista'), 
+                placa: placaInformada, 
+                km: kmInformado, 
+                observacoesGerais: formData.get('observacoes'), 
+                itens: [], 
+                temAvaria: false 
+            };
+            
             let avariasCount = 0;
+            // IMPORTANTE: Aqui montamos a string para o AppSheet, exatamente como esperado
+            let arrayItensParaAppSheet = []; 
+            
             for (let [k, v] of formData.entries()) {
                 if (k.startsWith('item_')) {
                     const label = formData.get('label_' + k);
                     const obs = formData.get('obs_' + k) || "";
+                    
+                    // Salva no objeto JSON interno para nosso uso na tela
                     novoChecklist.itens.push({ nome: label, status: v, observacao: obs });
+                    
+                    // Formata string para salvar na coluna H do Google Sheets para o AppSheet ler
+                    // Exemplo: "Fechadura da tampa traseira: Conforme (Obs: )"
+                    arrayItensParaAppSheet.push(`${label}: ${v} (Obs: ${obs})`);
+
                     if(v === "Nao Conforme") avariasCount++;
                 }
             }
             novoChecklist.temAvaria = avariasCount > 0;
+            
+            // Adiciona a string combinada ao payload que vai para o GAS
+            // O Apps Script precisará pegar esse 'itensString' e salvar na coluna H
+            novoChecklist.itensString = arrayItensParaAppSheet.join(' | ');
 
-            // Envia Checklist e atualiza KM do carro na nuvem silenciosamente
             await enviarParaPlanilha(novoChecklist);
             
             const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
@@ -588,10 +610,9 @@
                 await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
             }
 
-            showMessage("Checklist Salvo!", "Os dados foram enviados para o AppSheet.");
+            showMessage("Checklist Salvo!", "Enviado com sucesso.");
             this.reset(); window.scrollTo(0,0);
             
-            // Recarrega Nuvem para o Histórico aparecer
             await sincronizarComPlanilha(true);
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
@@ -607,7 +628,7 @@
             document.getElementById('dash-total-alerts').innerText = listaVeiculos.filter(v => checkVehicleAlerts(v).length > 0).length;
 
             let conf = 0, avar = 0;
-            checks.forEach(c => { if(c.temAvaria) avar++; else conf++; }); // Lógica Simplificada pro Chart
+            checks.forEach(c => { if(c.temAvaria) avar++; else conf++; });
 
             if(conformityChartInstance) conformityChartInstance.destroy();
             conformityChartInstance = new Chart(document.getElementById('conformityChart').getContext('2d'), {
@@ -630,21 +651,18 @@
             const checks = listaChecklists.filter(c => new Date(c.dataHora) >= startDate && new Date(c.dataHora) <= endDate);
 
             listaVeiculos.forEach(v => {
-                // Extrai a data de cadastro real baseada no ID gerado no momento do salvamento (ex: VEIC_171234567890)
                 let dataCadastro = new Date(0);
                 if(v.id_doc && v.id_doc.includes('_')) {
                     const ts = parseInt(v.id_doc.split('_')[1]);
                     if(!isNaN(ts)) {
-                        // Zera as horas da data de cadastro para comparar apenas o dia corretamente
                         const d = new Date(ts);
                         dataCadastro = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                     }
                 }
 
-                // Se a data final do filtro for anterior ao dia em que o carro foi cadastrado, ele é ignorado da conta.
                 if (endStr && endDate < dataCadastro) {
                     html += `<tr class="border-b bg-gray-50"><td class="p-3 font-bold uppercase text-gray-400">${escapeHTML(v.placa)}<br><span class="text-[10px] font-normal capitalize">${escapeHTML(v.modelo)}</span></td><td class="p-3"><span class="bg-gray-200 text-gray-500 text-[10px] px-2 py-1 rounded font-bold">Não Cadastrado</span></td><td class="p-3 text-xs text-gray-400">Adicionado à frota após este período.</td></tr>`;
-                    return; // Sai do forEach atual e não contabiliza nas porcentagens
+                    return; 
                 }
 
                 const isDone = checks.some(c => c.placa === v.placa);
@@ -673,18 +691,171 @@
             hist.sort((a,b) => new Date(b.dataHora) - new Date(a.dataHora));
             
             let html = '';
-            hist.forEach(c => {
+            hist.forEach((c, index) => {
                 const veic = listaVeiculos.find(v => v.placa === c.placa);
                 const alerts = veic ? checkVehicleAlerts(veic) : [];
                 const b1 = c.temAvaria ? '<span class="bg-red-100 text-red-800 text-[10px] px-2 py-1 rounded font-bold block w-max">Avarias</span>' : '<span class="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded font-bold block w-max">100% OK</span>';
-                const b2 = alerts.length>0 ? `<span class="bg-orange-100 text-orange-800 text-[9px] px-1 rounded block mt-1 w-max">⚠️ ${alerts.join(', ')}</span>` : '';
-                html += `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-xs">${new Date(c.dataHora).toLocaleString('pt-BR')}</td><td class="p-3 font-bold uppercase">${escapeHTML(c.placa)}</td><td class="p-3 capitalize">${escapeHTML(c.motorista)}</td><td class="p-3">${c.km}</td><td class="p-3">${b1}${b2}</td><td class="p-3 text-xs max-w-xs truncate">${escapeHTML(c.observacoesGerais)||'-'}</td></tr>`;
+                
+                // Botão para gerar PDF individual
+                const pdfBtn = `<button onclick="baixarPDFIndividual('${c.id_doc}')" class="text-blue-600 hover:text-blue-800" title="Baixar Relatório do Veículo">
+                                    <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                </button>`;
+
+                html += `<tr class="border-b hover:bg-gray-50">
+                            <td class="p-3 text-xs">${new Date(c.dataHora).toLocaleString('pt-BR')}</td>
+                            <td class="p-3 font-bold uppercase">${escapeHTML(c.placa)}</td>
+                            <td class="p-3 capitalize">${escapeHTML(c.motorista)}</td>
+                            <td class="p-3">${c.km}</td>
+                            <td class="p-3">${b1}</td>
+                            <td class="p-3 text-xs max-w-xs truncate">${escapeHTML(c.observacoesGerais)||'-'}</td>
+                            <td class="p-3 text-center no-print whitespace-nowrap">${pdfBtn}</td>
+                        </tr>`;
             });
-            document.getElementById('history-table-body').innerHTML = html || `<tr><td colspan="6" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum checklist encontrado.</td></tr>`;
+            document.getElementById('history-table-body').innerHTML = html || `<tr><td colspan="7" class="p-4 text-center text-gray-500 font-bold bg-gray-50">Nenhum checklist encontrado.</td></tr>`;
         }
 
-        function downloadCSV(tipo) { showMessage("Aviso", "Funcionalidade de Exportar CSV Ativada! (Requer biblioteca instalada no servidor final, vide código base para JS plain-text)."); }
-        function baixarPDF(tipo) { showMessage("Aviso", "Funcionalidade de PDF Ativada! Baseia-se no jsPDF."); }
+        // --- FUNÇÕES DE GERAÇÃO DE PDF ---
+
+        // PDF da Lista Geral (Histórico ou Veículos)
+        function baixarPDF(tipo) { 
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            if (tipo === 'history') {
+                doc.text("Histórico Geral de Checklists", 14, 15);
+                const tableData = listaChecklists.map(c => [
+                    new Date(c.dataHora).toLocaleString('pt-BR'), 
+                    c.placa, 
+                    c.motorista, 
+                    c.km, 
+                    c.temAvaria ? 'C/ Avarias' : 'OK', 
+                    c.observacoesGerais || '-'
+                ]);
+                
+                doc.autoTable({
+                    startY: 20,
+                    head: [['Data/Hora', 'Placa', 'Motorista', 'KM', 'Status', 'Obs']],
+                    body: tableData,
+                });
+                doc.save('Historico_Geral.pdf');
+            } else if (tipo === 'vehicles') {
+                doc.text("Lista de Veículos Cadastrados", 14, 15);
+                const tableData = listaVeiculos.map(v => [
+                    v.placa,
+                    v.modelo,
+                    v.kmAtual || 0,
+                    (parseInt(v.kmUltimaManutencao) || 0) + (parseInt(v.kmIntervalo) || 10000), // Prox Rev
+                    v.dataIpva || '-'
+                ]);
+
+                doc.autoTable({
+                    startY: 20,
+                    head: [['Placa', 'Modelo', 'KM Atual', 'Próx. Rev (KM)', 'Data Imposto Base']],
+                    body: tableData,
+                });
+                doc.save('Lista_Veiculos.pdf');
+            }
+        }
+
+        // PDF Individual de um Checklist Específico (Relatório do Veículo)
+        function baixarPDFIndividual(checklistId) {
+            const checklist = listaChecklists.find(c => c.id_doc === checklistId);
+            if (!checklist) {
+                showMessage("Erro", "Checklist não encontrado.");
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // Cabeçalho
+            doc.setFontSize(18);
+            doc.text(`Relatorio de Checklist - ${checklist.placa.toUpperCase()}`, 14, 20);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 28);
+            doc.setTextColor(0);
+
+            // Informações Gerais
+            doc.autoTable({
+                startY: 35,
+                theme: 'grid',
+                headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
+                head: [['Informacoes Gerais']],
+                body: [
+                    [`Data/Hora: ${new Date(checklist.dataHora).toLocaleString('pt-BR')}`],
+                    [`Placa: ${checklist.placa.toUpperCase()}`],
+                    [`Motorista: ${checklist.motorista}`],
+                    [`KM Registrado: ${checklist.km}`],
+                    [`Status Geral: ${checklist.temAvaria ? 'Com Avarias (Ver Abaixo)' : 'Conforme'}`]
+                ],
+            });
+
+            // Parseia a string de itens que vem do Google Sheets
+            // Exemplo da string no Sheets: "Item 1: Conforme (Obs: ) | Item 2: Nao Conforme (Obs: Quebrado)"
+            let tableItens = [];
+            
+            // Verifica se 'itensString' existe (caso tenha sido salvo pela nova versão)
+            if (checklist.itensString && typeof checklist.itensString === 'string') {
+                const itensArray = checklist.itensString.split(' | ');
+                itensArray.forEach(itemStr => {
+                    // Tenta separar "Nome: Status (Obs: texto)"
+                    const regex = /^(.*?):\s*(.*?)\s*\(Obs:\s*(.*?)\)$/;
+                    const match = itemStr.match(regex);
+                    
+                    if (match) {
+                        tableItens.push([match[1], match[2], match[3] || '-']);
+                    } else {
+                        // Fallback se o formato não bater exatamente
+                        tableItens.push([itemStr, '-', '-']);
+                    }
+                });
+            } else if (checklist.itens && Array.isArray(checklist.itens) && checklist.itens.length > 0) {
+                 // Caso esteja lendo dados onde 'itens' foi mantido como Array no JSON (depende de como o GAS envia de volta)
+                 checklist.itens.forEach(item => {
+                     tableItens.push([item.nome, item.status, item.observacao || '-']);
+                 });
+            }
+            
+            if (tableItens.length === 0) {
+                tableItens = [['Nenhum item detalhado encontrado', '-', '-']];
+            }
+
+            // Tabela de Itens Verificados
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 15,
+                theme: 'grid',
+                headStyles: { fillColor: [0, 86, 179] }, // Cor Primária
+                head: [['Item Verificado', 'Status', 'Observacoes']],
+                body: tableItens,
+                didParseCell: function (data) {
+                    // Colore a célula de Status de acordo com "Nao Conforme"
+                    if (data.section === 'body' && data.column.index === 1) {
+                        if (data.cell.raw === 'Nao Conforme') {
+                            data.cell.styles.textColor = [220, 53, 69]; // Danger (Vermelho)
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (data.cell.raw === 'Conforme') {
+                            data.cell.styles.textColor = [40, 167, 69]; // Success (Verde)
+                        }
+                    }
+                }
+            });
+
+            // Observações Gerais
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 15,
+                theme: 'grid',
+                headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0] },
+                head: [['Observacoes Gerais do Motorista']],
+                body: [[checklist.observacoesGerais || 'Nenhuma.']],
+            });
+
+            // Salva o PDF
+            doc.save(`Checklist_${checklist.placa}_${checklist.dataHora.substring(0,10)}.pdf`);
+        }
+        // -------------------------------------
+
 
         function verificarQRCodeURL() {
             const p = new URLSearchParams(window.location.search).get('placa');
@@ -699,7 +870,7 @@
             renderChecklistForm(); verificarQRCodeURL();
             const today = new Date().toISOString().split('T')[0];
             if(document.getElementById('adh-start')) { document.getElementById('adh-start').value = today; document.getElementById('adh-end').value = today; }
-            if (!new URLSearchParams(window.location.search).get('placa')) sincronizarComPlanilha(true); // Puxa nuvem invisível ao abrir!
+            if (!new URLSearchParams(window.location.search).get('placa')) sincronizarComPlanilha(true);
         });
     </script>
 </body>
