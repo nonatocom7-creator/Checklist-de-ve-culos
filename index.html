@@ -251,8 +251,9 @@
                         <input type="date" id="v-data-emplacamento" required class="w-full p-2 border rounded text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
 
-                    <div class="md:col-span-4 mt-2">
-                        <button type="submit" class="w-full bg-green-600 text-white p-2 rounded font-bold hover:bg-green-700 h-full mt-1" id="btnSalvarVeiculo">Salvar Veículo na Nuvem</button>
+                    <div class="md:col-span-4 mt-2 flex gap-2 h-max">
+                        <button type="submit" class="flex-1 bg-green-600 text-white p-2 rounded font-bold hover:bg-green-700 transition-colors" id="btnSalvarVeiculo">Salvar Veículo na Nuvem</button>
+                        <button type="button" onclick="cancelarEdicao()" class="hidden bg-gray-400 text-white px-4 py-2 rounded font-bold hover:bg-gray-500 transition-colors" id="btnCancelarEdicao">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -312,6 +313,7 @@
         let listaChecklists = [];
         let listaVeiculos = [];
         let vehicleToDeleteId = null; 
+        let editingVehicleId = null; // Controla se estamos editando um veiculo
         
         function escapeHTML(str) {
             if (str === null || str === undefined) return '';
@@ -325,7 +327,6 @@
             } catch(e) { console.error("Erro na comunicação com Sheets", e); }
         }
 
-        // CARREGA DADOS SALVOS NO CELULAR IMEDIATAMENTE (SEM ESPERAR A NUVEM)
         function carregarDadosOffline() {
             const checkLocal = localStorage.getItem('frota_checklists');
             const veicLocal = localStorage.getItem('frota_veiculos');
@@ -358,7 +359,6 @@
                     listaChecklists = dadosPlanilha.checklists;
                     listaVeiculos = dadosPlanilha.veiculos;
                     
-                    // Atualiza as telas com os dados frescos da nuvem
                     renderDashboard();
                     renderAdherence();
                     renderHistory();
@@ -434,32 +434,77 @@
             container.innerHTML = formHtml;
         }
 
+        function editVehicle(docId) {
+            const v = listaVeiculos.find(ve => ve.id_doc === docId);
+            if(!v) return;
+
+            editingVehicleId = docId;
+            document.getElementById('v-placa').value = v.placa;
+            document.getElementById('v-modelo').value = v.modelo || '';
+            document.getElementById('v-email').value = v.emailAlerta || '';
+            document.getElementById('v-km-ultima').value = v.kmUltimaManutencao || '';
+            document.getElementById('v-km-intervalo').value = v.kmIntervalo || '';
+            document.getElementById('v-km-oleo-ultima').value = v.kmUltimaTrocaOleo || '';
+            document.getElementById('v-km-oleo-intervalo').value = v.kmIntervaloOleo || '';
+
+            if (v.dataIpva) {
+                document.getElementById('v-data-emplacamento').value = v.dataIpva.substring(0, 10);
+            } else {
+                document.getElementById('v-data-emplacamento').value = '';
+            }
+
+            const btn = document.getElementById('btnSalvarVeiculo');
+            btn.innerText = "Atualizar Veículo";
+            btn.classList.replace('bg-green-600', 'bg-blue-600');
+            btn.classList.replace('hover:bg-green-700', 'hover:bg-blue-700');
+            document.getElementById('btnCancelarEdicao').classList.remove('hidden');
+
+            window.scrollTo(0, document.getElementById('view-vehicles').offsetTop);
+        }
+
+        function cancelarEdicao() {
+            editingVehicleId = null;
+            document.getElementById('vehicleForm').reset();
+            const btn = document.getElementById('btnSalvarVeiculo');
+            btn.innerText = "Salvar Veículo na Nuvem";
+            btn.classList.replace('bg-blue-600', 'bg-green-600');
+            btn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+            document.getElementById('btnCancelarEdicao').classList.add('hidden');
+        }
+
         document.getElementById('vehicleForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const btn = document.getElementById('btnSalvarVeiculo');
             btn.innerText = "Enviando à Nuvem..."; btn.disabled = true;
 
             const novaPlaca = document.getElementById('v-placa').value.toUpperCase();
-            if(listaVeiculos.some(v => v.placa === novaPlaca)) {
-                showMessage("Erro", "Veículo com esta placa já existe!");
-                btn.innerText = "Salvar Veículo na Nuvem"; btn.disabled = false;
+            
+            const veiculoExistente = listaVeiculos.find(v => v.placa === novaPlaca);
+            if(veiculoExistente && veiculoExistente.id_doc !== editingVehicleId) {
+                showMessage("Erro", "Veículo com esta placa já existe no sistema!");
+                btn.innerText = editingVehicleId ? "Atualizar Veículo" : "Salvar Veículo na Nuvem"; 
+                btn.disabled = false;
                 return;
             }
 
             const dataEmplacamento = document.getElementById('v-data-emplacamento').value;
             let dataBaseIpvaLic = null;
             if (dataEmplacamento) {
-                const empDate = new Date(dataEmplacamento + 'T12:00:00');
-                const dataProjetada = new Date(new Date().getFullYear(), empDate.getMonth(), empDate.getDate(), 12, 0, 0);
-                dataBaseIpvaLic = dataProjetada.toISOString().split('T')[0];
+                if (editingVehicleId) {
+                    dataBaseIpvaLic = dataEmplacamento; 
+                } else {
+                    const empDate = new Date(dataEmplacamento + 'T12:00:00');
+                    const dataProjetada = new Date(new Date().getFullYear(), empDate.getMonth(), empDate.getDate(), 12, 0, 0);
+                    dataBaseIpvaLic = dataProjetada.toISOString().split('T')[0];
+                }
             }
 
             const kmUltima = parseInt(document.getElementById('v-km-ultima').value);
             const kmOleoUltima = parseInt(document.getElementById('v-km-oleo-ultima').value);
 
-            const newVehicle = {
-                action: "save_vehicle",
-                id_doc: 'VEIC_' + Date.now(),
+            const payload = {
+                action: editingVehicleId ? "update_vehicle" : "save_vehicle",
+                id_doc: editingVehicleId || 'VEIC_' + Date.now(),
                 placa: novaPlaca,
                 modelo: document.getElementById('v-modelo').value,
                 emailAlerta: document.getElementById('v-email').value,
@@ -467,16 +512,23 @@
                 kmIntervalo: parseInt(document.getElementById('v-km-intervalo').value),
                 kmUltimaTrocaOleo: kmOleoUltima,
                 kmIntervaloOleo: parseInt(document.getElementById('v-km-oleo-intervalo').value),
-                kmAtual: kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima,
                 dataIpva: dataBaseIpvaLic
             };
 
-            await enviarParaPlanilha(newVehicle);
+            if (!editingVehicleId) {
+                payload.kmAtual = kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima;
+            } else {
+                payload.kmAtual = veiculoExistente ? veiculoExistente.kmAtual : (kmUltima > kmOleoUltima ? kmUltima : kmOleoUltima);
+            }
+
+            await enviarParaPlanilha(payload);
             this.reset();
-            showMessage("Sucesso", "Veículo adicionado!");
+            const msgAcao = editingVehicleId ? "Veículo atualizado com sucesso!" : "Veículo adicionado!";
+            cancelarEdicao(); 
+            showMessage("Sucesso", msgAcao);
             
             await sincronizarComPlanilha(true);
-            btn.innerText = "Salvar Veículo na Nuvem"; btn.disabled = false;
+            btn.disabled = false;
         });
 
         function renderVehicles() {
@@ -509,7 +561,8 @@
                         <td class="p-3 text-xs text-gray-600">Rev: ${kmProxRev}<br>Óleo: ${kmProxOleo}</td>
                         <td class="p-3 flex flex-col justify-center">${statusHtml}</td>
                         <td class="p-3 text-center no-print whitespace-nowrap">
-                            <button onclick="dispararEmail('${escapeHTML(v.emailAlerta)}', '${escapeHTML(v.placa)}')" class="${isAlert?'text-blue-500 hover:text-blue-800':'text-gray-300'}" title="Alertar email"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></button>
+                            <button onclick="editVehicle('${v.id_doc}')" class="text-indigo-600 hover:text-indigo-800 mr-1" title="Editar Veículo"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                            <button onclick="dispararEmail('${escapeHTML(v.emailAlerta)}', '${escapeHTML(v.placa)}', '${v.id_doc}')" class="${isAlert?'text-blue-500 hover:text-blue-800':'text-gray-300'}" title="Disparar Alerta via Google Sheets"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></button>
                             <span class="mx-1 text-gray-300">|</span>
                             <button onclick="atualizarVeiculoNuvem('${v.id_doc}', 'revisao')" class="bg-gray-200 text-gray-800 text-[10px] font-bold px-2 py-1 rounded hover:bg-gray-300 mr-1">Feita Rev.</button>
                             <button onclick="atualizarVeiculoNuvem('${v.id_doc}', 'oleo')" class="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded hover:bg-yellow-200 mr-1">Trocado Óleo</button>
@@ -571,7 +624,32 @@
             }
         });
 
-        function dispararEmail(email, placa) { window.location.href = `mailto:${email}?subject=Alerta Frota: ${placa}&body=Verifique as manutencoes.`; }
+        async function dispararEmail(email, placa, docId) { 
+            if (!email) return showMessage("Erro", "O veículo não tem um e-mail cadastrado.");
+            
+            // Verifica se o veículo de fato tem pendências
+            const vIndex = listaVeiculos.findIndex(v => v.id_doc === docId);
+            if (vIndex === -1) return;
+            const alertas = checkVehicleAlerts(listaVeiculos[vIndex]);
+            
+            if (alertas.length === 0) {
+                return showMessage("Aviso", "Este veículo está em dia! Não há alertas pendentes para notificar.");
+            }
+
+            showMessage("Enviando...", "Aguarde. O Google Sheets está disparando o e-mail no servidor...");
+            
+            const payload = { 
+                action: 'send_alert', 
+                placa: placa, 
+                email: email,
+                alertas: alertas.join(", ") 
+            };
+            
+            await enviarParaPlanilha(payload);
+            
+            closeModal('messageModal');
+            showMessage("Sucesso", `E-mail de alerta enviado direto para ${email}!`);
+        }
         
         function generateQR(placa) {
             document.getElementById('qrModal').style.display = 'flex'; document.getElementById('qrPlacaText').innerText = 'Placa: ' + placa;
@@ -587,6 +665,18 @@
             const formData = new FormData(this);
             const kmInformado = parseInt(formData.get('km'));
             const placaInformada = formData.get('placa').toUpperCase();
+            
+            // TRAVA DE SEGURANÇA: Validar se o KM é menor que o atual
+            const vIndexValidacao = listaVeiculos.findIndex(v => v.placa === placaInformada);
+            if (vIndexValidacao > -1) {
+                const kmCadastrado = parseInt(listaVeiculos[vIndexValidacao].kmAtual) || 0;
+                if (kmInformado < kmCadastrado) {
+                    showMessage("Atenção: KM Inválido", `O KM informado (${kmInformado}) não pode ser menor que o último KM registrado no sistema para este veículo (${kmCadastrado}).`);
+                    btn.innerText = "Salvar Checklist"; 
+                    btn.disabled = false;
+                    return; // Interrompe o envio do formulário
+                }
+            }
             
             const novoChecklist = { 
                 action: 'save_checklist', 
@@ -605,7 +695,6 @@
             for (let [k, v] of formData.entries()) {
                 if (k.startsWith('item_')) {
                     const label = formData.get('label_' + k);
-                    // CORREÇÃO 1: O identificador do input estava sendo montado errado ("obs_item_" em vez de "obs_").
                     const obs = formData.get(k.replace('item_', 'obs_')) || ""; 
                     
                     novoChecklist.itens.push({ nome: label, status: v, observacao: obs });
@@ -614,21 +703,16 @@
                 }
             }
             novoChecklist.temAvaria = avariasCount > 0;
-            
-            // Mantemos o formato de Array, que funciona perfeitamente com seu Gerador de PDF
             novoChecklist.itensString = JSON.stringify(novoChecklist.itens);
 
-            // CORREÇÃO 2: Performance! Ao removermos o "await", o envio acontece em 
-            // segundo plano e não trava o botão do usuário.
             enviarParaPlanilha(novoChecklist);
             
             const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
             if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
                 enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
-                listaVeiculos[vIndex].kmAtual = kmInformado; // Atualiza localmente
+                listaVeiculos[vIndex].kmAtual = kmInformado; 
             }
 
-            // Atualiza os dados na tela instantaneamente para o usuário não precisar esperar
             listaChecklists.push(novoChecklist);
             renderDashboard();
             renderHistory();
@@ -636,13 +720,10 @@
             showMessage("Checklist Salvo!", "Salvo com sucesso! Acesse a aba Histórico para baixar o PDF.");
             this.reset(); window.scrollTo(0,0);
             
-            // O botão é destravado instantaneamente
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
             
-            // Executa a sincronização geral de forma invisível/segundo plano
             sincronizarComPlanilha(true);
         });
-        // ==============================================================================
 
         function renderDashboard() {
             const startStr = document.getElementById('dash-start').value; const endStr = document.getElementById('dash-end').value;
@@ -766,7 +847,7 @@
                     v.placa,
                     v.modelo,
                     v.kmAtual || 0,
-                    (parseInt(v.kmUltimaManutencao) || 0) + (parseInt(v.kmIntervalo) || 10000), // Prox Rev
+                    (parseInt(v.kmUltimaManutencao) || 0) + (parseInt(v.kmIntervalo) || 10000), 
                     v.dataIpva || '-'
                 ]);
 
@@ -779,7 +860,6 @@
             }
         }
 
-        // PDF Individual de um Checklist Específico
         function baixarPDFIndividual(checklistId) {
             const checklist = listaChecklists.find(c => c.id_doc === checklistId);
             if (!checklist) {
@@ -815,7 +895,6 @@
             let tableItens = [];
             let extraido = false;
             
-            // Esta lógica tenta achar os detalhes da coluna seja qual for o nome que o Google Sheets retornou
             const colunaDetalhes = checklist.itens || checklist.itensString || checklist.detalhes || checklist['Detalhes (Itens)'];
 
             if (colunaDetalhes) {
@@ -836,7 +915,6 @@
                             extraido = true;
                         }
                     } catch (e) {
-                        // Se não for JSON, lê como texto quebrado por linha (formato da sua Imagem 2)
                         const itensArray = colunaDetalhes.split(/[\n|]/);
                         itensArray.forEach(itemStr => {
                             itemStr = itemStr.trim();
@@ -911,17 +989,14 @@
             const today = new Date().toISOString().split('T')[0];
             if(document.getElementById('adh-start')) { document.getElementById('adh-start').value = today; document.getElementById('adh-end').value = today; }
             
-            // 1. Faz a primeira carga de dados assim que abrir o sistema
             if (!new URLSearchParams(window.location.search).get('placa')) {
                 sincronizarComPlanilha(true);
             }
 
-            // 2. SINCRONIZAÇÃO AUTOMÁTICA (A CADA 30 SEGUNDOS)
             setInterval(() => {
                 sincronizarComPlanilha(true);
-            }, 30000); // 30000 milissegundos = 30 segundos
+            }, 30000);
 
-            // 3. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR PARA A ABA DO NAVEGADOR
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
                     sincronizarComPlanilha(true);
