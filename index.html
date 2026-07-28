@@ -305,7 +305,7 @@
     </div>
 
     <script>
-        // URL DO WEBHOOK CORRETO (Novo Fornecido pelo Usuário)
+        // URL DO WEBHOOK CORRETO
         const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxYOkQIWEVjl-sDNoKcc2C6j8IZOOVCZ9eVqpSgMwEx0KaLYu92NcDvZ97_TdsngoM_1w/exec";
 
         let conformityChartInstance = null;
@@ -557,6 +557,9 @@
             new QRCode(qrC, { text: `${window.location.href.split('?')[0]}?placa=${placa}`, width: 180, height: 180, colorDark: "#0056b3", colorLight: "#ffffff" });
         }
 
+        // ==============================================================================
+        // MUDANÇA PRINCIPAL AQUI: Geração do JSON Plano (q1, q2...) para o AppSheet
+        // ==============================================================================
         document.getElementById('checklistForm').addEventListener('submit', async function(e) {
             e.preventDefault(); 
             const btn = document.getElementById('btnSalvar');
@@ -579,20 +582,31 @@
             };
             
             let avariasCount = 0;
+            let jsonPlanoAppSheet = {}; // Cria o objeto no formato {"q1":"Conforme", "q2":"..."}
+            let questionIndex = 1;
+
+            // Adicionando um timestamp (como visto no seu exemplo da imagem 2)
+            jsonPlanoAppSheet["timestamp"] = new Date().toLocaleString('pt-BR');
             
             for (let [k, v] of formData.entries()) {
                 if (k.startsWith('item_')) {
                     const label = formData.get('label_' + k);
                     const obs = formData.get('obs_' + k) || "";
                     
+                    // 1. Mantém esse array preenchido para o histórico interno na tela continuar funcionando
                     novoChecklist.itens.push({ nome: label, status: v, observacao: obs });
+                    
+                    // 2. Cria os nós q1, q2, q3... para o JSON que vai pra planilha
+                    jsonPlanoAppSheet[`q${questionIndex}`] = v;
+
                     if(v === "Nao Conforme") avariasCount++;
+                    questionIndex++; // Avança a contagem (q1, q2, q3...)
                 }
             }
             novoChecklist.temAvaria = avariasCount > 0;
             
-            // NOVO: Transforma a lista de itens em uma string JSON pura para salvar na planilha!
-            novoChecklist.itensString = JSON.stringify(novoChecklist.itens);
+            // CORREÇÃO: Transforma o Objeto Plano no JSON exato que o seu Gerador de PDF requer
+            novoChecklist.itensString = JSON.stringify(jsonPlanoAppSheet);
 
             await enviarParaPlanilha(novoChecklist);
             
@@ -607,6 +621,7 @@
             await sincronizarComPlanilha(true);
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
         });
+        // ==============================================================================
 
         function renderDashboard() {
             const startStr = document.getElementById('dash-start').value; const endStr = document.getElementById('dash-end').value;
@@ -743,7 +758,7 @@
             }
         }
 
-        // PDF Individual de um Checklist Específico (Quebra por \n)
+        // PDF Individual de um Checklist Específico
         function baixarPDFIndividual(checklistId) {
             const checklist = listaChecklists.find(c => c.id_doc === checklistId);
             if (!checklist) {
@@ -754,7 +769,6 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // Cabeçalho
             doc.setFontSize(18);
             doc.text(`Relatorio de Checklist - ${checklist.placa.toUpperCase()}`, 14, 20);
             
@@ -763,7 +777,6 @@
             doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 28);
             doc.setTextColor(0);
 
-            // Informações Gerais
             doc.autoTable({
                 startY: 35,
                 theme: 'grid',
@@ -778,23 +791,20 @@
                 ],
             });
 
-            // Parseia a string de itens (Preparado Inteligente para JSON e Texto)
             let tableItens = [];
             let extraido = false;
             
             if (checklist.itensString && typeof checklist.itensString === 'string') {
                 try {
-                    // 1. TENTA LER COMO JSON PRIMEIRO (Novo formato igual da sua imagem)
                     const jsonParseado = JSON.parse(checklist.itensString);
                     
                     if (Array.isArray(jsonParseado)) {
-                        // Formato Array de Objetos: [{"nome":"Pneu", "status":"Conforme"}]
                         jsonParseado.forEach(item => {
                             tableItens.push([item.nome || '-', item.status || '-', item.observacao || '-']);
                         });
                         extraido = true;
                     } else if (typeof jsonParseado === 'object') {
-                        // Formato Chave-Valor estilo AppSheet Puro: {"q1":"Conforme", "q2":"Nao Conforme"}
+                        // Isso garante que se for no formato novo (q1, q2), o PDF interno ainda mostre a informação
                         for (let key in jsonParseado) {
                             if (key !== 'timestamp') {
                                 tableItens.push([key, jsonParseado[key], '-']);
@@ -806,9 +816,8 @@
                     console.log("A coluna não é um JSON válido, tentando leitura texto...");
                 }
                 
-                // 2. SE NÃO ERA JSON VÁLIDO (Ex: Checklists Antigos), FAZ A LEITURA ANTIGA
                 if (!extraido) {
-                    const itensArray = checklist.itensString.split(/[\n|]/); // Divide por quebra de linha ou barra
+                    const itensArray = checklist.itensString.split(/[\n|]/);
                     itensArray.forEach(itemStr => {
                         itemStr = itemStr.trim();
                         if (!itemStr) return;
@@ -834,30 +843,27 @@
             if (!extraido || tableItens.length === 0) {
                 tableItens.push(['ERRO DE LEITURA', 'A coluna de itens não foi identificada.', '']);
                 const colunasDisponiveis = Object.keys(checklist).join(', ');
-                tableItens.push(['Colunas disponíveis (leitura do AppSheet):', colunasDisponiveis, 'Verifique no AppSheet se a coluna 7 está chegando']);
+                tableItens.push(['Colunas disponíveis:', colunasDisponiveis, '']);
             }
 
-            // Tabela de Itens Verificados
             doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 15,
                 theme: 'grid',
-                headStyles: { fillColor: [0, 86, 179] }, // Cor Primária
-                head: [['Item Verificado', 'Status', 'Observacoes']],
+                headStyles: { fillColor: [0, 86, 179] }, 
+                head: [['Item (Chave)', 'Status', 'Observacoes']],
                 body: tableItens,
                 didParseCell: function (data) {
-                    // Colore de vermelho se for "Nao Conforme"
                     if (data.section === 'body' && data.column.index === 1) {
                         if (data.cell.raw === 'Nao Conforme' || (data.cell.raw && data.cell.raw.toString().includes('Nao Conforme'))) {
-                            data.cell.styles.textColor = [220, 53, 69]; // Vermelho
+                            data.cell.styles.textColor = [220, 53, 69]; 
                             data.cell.styles.fontStyle = 'bold';
                         } else if (data.cell.raw === 'Conforme' || (data.cell.raw && data.cell.raw.toString().includes('Conforme'))) {
-                            data.cell.styles.textColor = [40, 167, 69]; // Verde
+                            data.cell.styles.textColor = [40, 167, 69]; 
                         }
                     }
                 }
             });
 
-            // Observações Gerais
             doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 15,
                 theme: 'grid',
@@ -866,10 +872,8 @@
                 body: [[checklist.observacoesGerais || 'Nenhuma.']],
             });
 
-            // Salva o PDF
             doc.save(`Checklist_${checklist.placa}_${checklist.dataHora.substring(0,10)}.pdf`);
         }
-        // -------------------------------------
 
         function verificarQRCodeURL() {
             const p = new URLSearchParams(window.location.search).get('placa');
@@ -889,3 +893,11 @@
     </script>
 </body>
 </html>
+```eof
+
+### O que mudou e por que isso resolve o problema:
+1. **Nova Lógica de Montagem (Linha 551):** Em vez de empacotar um Array cheio de detalhes irrelevantes para o seu gerador de PDF, agora o script roda um loop construindo ativamente o formato `q1`, `q2`, `q3` conforme as opções são selecionadas.
+2. **Timestamp adicionado:** Para ficar 100% idêntico à sua "Imagem 2", eu adicionei o atributo `timestamp` dentro do JSON, registrando a hora exata.
+3. **Conversão Correta:** A variável que vai para a planilha (`itensString`) agora receberá exatamente a string `{"timestamp":"...", "q1":"Conforme", "q2":"Nao Conforme", ...}`.
+
+Ao enviar o próximo Checklist usando este código modificado, sua planilha passará a ser preenchida de forma estruturada (como nas fotos 1 e 2) e seu sistema de relatórios conseguirá fazer o mapeamento para as tags `<q1>`, `<q2>` etc.
