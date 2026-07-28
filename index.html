@@ -325,11 +325,28 @@
             } catch(e) { console.error("Erro na comunicação com Sheets", e); }
         }
 
+        // CARREGA DADOS SALVOS NO CELULAR IMEDIATAMENTE (SEM ESPERAR A NUVEM)
+        function carregarDadosOffline() {
+            const checkLocal = localStorage.getItem('frota_checklists');
+            const veicLocal = localStorage.getItem('frota_veiculos');
+            if (checkLocal && veicLocal) {
+                listaChecklists = JSON.parse(checkLocal);
+                listaVeiculos = JSON.parse(veicLocal);
+                renderDashboard();
+                renderAdherence();
+                renderHistory();
+                renderVehicles();
+            }
+        }
+
         async function sincronizarComPlanilha(silencioso = false) {
             if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
             
             const btn = document.getElementById('btn-sync');
-            if(btn && !silencioso) btn.innerText = "⏳ Baixando...";
+            if(btn && !silencioso) {
+                btn.innerText = "⏳ Atualizando...";
+                btn.classList.add('opacity-70'); 
+            }
             
             try {
                 const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, { method: 'GET', redirect: 'follow' });
@@ -341,17 +358,22 @@
                     listaChecklists = dadosPlanilha.checklists;
                     listaVeiculos = dadosPlanilha.veiculos;
                     
+                    // Atualiza as telas com os dados frescos da nuvem
                     renderDashboard();
                     renderAdherence();
                     renderHistory();
                     renderVehicles();
-                    if(!silencioso) showMessage("Nuvem Sincronizada", "O sistema atualizou os dados lendo diretamente do Google Sheets.");
+                    
+                    if(!silencioso) showMessage("Nuvem Sincronizada", "Dados baixados com sucesso!");
                 }
             } catch(e) {
                 console.warn("Aviso:", e.message);
-                if(!silencioso) showMessage("Erro de Conexão", "Não foi possível puxar os dados. Verifique a URL do Webhook.");
+                if(!silencioso) showMessage("Aviso de Conexão", "Não foi possível puxar os dados. Verifique sua conexão ou tente mais tarde.");
             }
-            if(btn && !silencioso) btn.innerText = "🔄 Sincronizar";
+            if(btn && !silencioso) {
+                btn.innerText = "🔄 Sincronizar";
+                btn.classList.remove('opacity-70');
+            }
         }
 
         function checkVehicleAlerts(v) {
@@ -884,10 +906,27 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            renderChecklistForm(); verificarQRCodeURL();
+            renderChecklistForm(); 
+            verificarQRCodeURL();
             const today = new Date().toISOString().split('T')[0];
             if(document.getElementById('adh-start')) { document.getElementById('adh-start').value = today; document.getElementById('adh-end').value = today; }
-            if (!new URLSearchParams(window.location.search).get('placa')) sincronizarComPlanilha(true);
+            
+            // 1. Faz a primeira carga de dados assim que abrir o sistema
+            if (!new URLSearchParams(window.location.search).get('placa')) {
+                sincronizarComPlanilha(true);
+            }
+
+            // 2. SINCRONIZAÇÃO AUTOMÁTICA (A CADA 30 SEGUNDOS)
+            setInterval(() => {
+                sincronizarComPlanilha(true);
+            }, 30000); // 30000 milissegundos = 30 segundos
+
+            // 3. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR PARA A ABA DO NAVEGADOR
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    sincronizarComPlanilha(true);
+                }
+            });
         });
     </script>
 </body>
