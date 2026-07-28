@@ -566,8 +566,6 @@
             const kmInformado = parseInt(formData.get('km'));
             const placaInformada = formData.get('placa').toUpperCase();
             
-            // Revertemos para o formato original (Array de itens) para garantir
-            // que a sua planilha continue gerando aquele bloco de texto corretamente (Imagem 2)
             const novoChecklist = { 
                 action: 'save_checklist', 
                 id_doc: 'CHK_' + Date.now(), 
@@ -585,7 +583,8 @@
             for (let [k, v] of formData.entries()) {
                 if (k.startsWith('item_')) {
                     const label = formData.get('label_' + k);
-                    const obs = formData.get('obs_' + k) || "";
+                    // CORREÇÃO 1: O identificador do input estava sendo montado errado ("obs_item_" em vez de "obs_").
+                    const obs = formData.get(k.replace('item_', 'obs_')) || ""; 
                     
                     novoChecklist.itens.push({ nome: label, status: v, observacao: obs });
 
@@ -594,22 +593,34 @@
             }
             novoChecklist.temAvaria = avariasCount > 0;
             
-            // Salvando como string caso o Apps Script precise desse formato
+            // Mantemos o formato de Array, que funciona perfeitamente com seu Gerador de PDF
             novoChecklist.itensString = JSON.stringify(novoChecklist.itens);
 
-            await enviarParaPlanilha(novoChecklist);
+            // CORREÇÃO 2: Performance! Ao removermos o "await", o envio acontece em 
+            // segundo plano e não trava o botão do usuário.
+            enviarParaPlanilha(novoChecklist);
             
             const vIndex = listaVeiculos.findIndex(v => v.placa === placaInformada);
             if(vIndex > -1 && kmInformado > (listaVeiculos[vIndex].kmAtual || 0)) {
-                await enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
+                enviarParaPlanilha({ action: 'update_vehicle', id_doc: listaVeiculos[vIndex].id_doc, kmAtual: kmInformado });
+                listaVeiculos[vIndex].kmAtual = kmInformado; // Atualiza localmente
             }
 
-            showMessage("Checklist Salvo!", "Enviado com sucesso para a nuvem. Acesse a aba Histórico para baixar o PDF.");
+            // Atualiza os dados na tela instantaneamente para o usuário não precisar esperar
+            listaChecklists.push(novoChecklist);
+            renderDashboard();
+            renderHistory();
+
+            showMessage("Checklist Salvo!", "Salvo com sucesso! Acesse a aba Histórico para baixar o PDF.");
             this.reset(); window.scrollTo(0,0);
             
-            await sincronizarComPlanilha(true);
+            // O botão é destravado instantaneamente
             btn.innerText = "Salvar Checklist"; btn.disabled = false;
+            
+            // Executa a sincronização geral de forma invisível/segundo plano
+            sincronizarComPlanilha(true);
         });
+        // ==============================================================================
 
         function renderDashboard() {
             const startStr = document.getElementById('dash-start').value; const endStr = document.getElementById('dash-end').value;
